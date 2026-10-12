@@ -989,7 +989,12 @@ func (m replModel) inputMetaLocationLine() string {
 
 	model := m.inputMetaModel()
 	location := abbreviateHome(m.ctx.workingDir)
-	prefix := leftPad + repltheme.HighlightStyle.Render(model) + repltheme.MetaLabelStyle.Render(sep)
+	modelText := repltheme.HighlightStyle.Render(model)
+	if m.routerEnabled() && strings.Contains(model, " → ") {
+		parts := strings.SplitN(model, " → ", 2)
+		modelText = repltheme.MetaLabelStyle.Render(parts[0]) + repltheme.MetaLabelStyle.Render(" → ") + repltheme.HighlightStyle.Render(parts[1])
+	}
+	prefix := leftPad + modelText + repltheme.MetaLabelStyle.Render(sep)
 	available := m.width - lipgloss.Width(prefix)
 	if m.width > 0 && lipgloss.Width(location) > available && available > 1 {
 		location = ansi.Truncate(location, available-1, "…")
@@ -1018,7 +1023,11 @@ func (m replModel) inputMetaLocationLine() string {
 func (m replModel) inputMetaModel() string {
 	if m.routerEnabled() && m.ctx.globalCfg.Decision != nil {
 		d := m.ctx.globalCfg.Decision
-		return d.ActiveProvider + "/" + d.ActiveModel + " (router)"
+		model := d.ActiveProvider + "/" + d.ActiveModel + " (router)"
+		if m.ctx.cfg != nil && m.ctx.cfg.Provider != "" && m.ctx.cfg.Model != "" {
+			model += " → " + m.ctx.cfg.Provider + "/" + m.ctx.cfg.Model
+		}
+		return model
 	}
 	if m.ctx == nil || m.ctx.cfg == nil || m.ctx.cfg.Model == "" {
 		return "-"

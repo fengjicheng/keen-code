@@ -116,8 +116,8 @@ func TestRouterClassifiesBeforeSubmittingAndRoutes(t *testing.T) {
 			if len(m.agentCore.GetMessages()) != 1 || m.router.pending {
 				t.Fatal("routed prompt not submitted exactly once")
 			}
-			if m.inputMetaModel() != "typesafe/classifier (router)" {
-				t.Fatal(m.inputMetaModel())
+			if got, want := m.inputMetaModel(), "typesafe/classifier (router) → "+config.ProviderOpenAI+"/"+model; got != want {
+				t.Fatalf("inputMetaModel() = %q, want %q", got, want)
 			}
 		})
 	}
