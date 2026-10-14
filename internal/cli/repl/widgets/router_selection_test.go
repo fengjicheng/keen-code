@@ -91,7 +91,7 @@ func TestRouterSelectionIncludesStoredOAuth(t *testing.T) {
 func TestRouterSelectionDescriptivePrompts(t *testing.T) {
 	for _, tc := range []struct{ category, progress, description string }{
 		{config.RouterCategorySimple, "1/3", "fast, cost-effective"},
-		{config.RouterCategoryStandard, "2/3", "classification fails"},
+		{config.RouterCategoryStandard, "2/3", "balanced model"},
 		{config.RouterCategoryComplex, "3/3", "most capable model"},
 	} {
 		for _, step := range []Step{StepProvider, StepModel, StepThinking} {

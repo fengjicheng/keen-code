@@ -14,8 +14,7 @@ import (
 // classificationManager owns the REPL state and lifecycle for decision tasks.
 // Individual task implementations remain independent of the REPL.
 type classificationManager struct {
-	complexity         *taskcomplexity.Classifier
-	complexityExchange []taskcomplexity.Message
+	complexity *taskcomplexity.Classifier
 }
 
 func newClassificationManager(_ *config.GlobalConfig) (*classificationManager, error) {
@@ -51,33 +50,12 @@ func (m *classificationManager) Configure(global *config.GlobalConfig) error {
 	return nil
 }
 
-func (m *classificationManager) RecordUserMessage(content string) {
-	if m == nil {
-		return
-	}
-	m.complexityExchange = append(m.complexityExchange, taskcomplexity.Message{Role: "user", Content: content})
-}
-
-func (m *classificationManager) RecordAssistantMessage(content string) {
-	if m == nil || content == "" {
-		return
-	}
-	m.complexityExchange = append(m.complexityExchange, taskcomplexity.Message{Role: "assistant", Content: content})
-}
-
-func (m *classificationManager) Reset() {
-	if m != nil {
-		m.complexityExchange = nil
-	}
-}
-
-func (m *classificationManager) ClassifyTask(ctx context.Context, cwd, gitBranch string) (taskcomplexity.Result, string, error) {
+func (m *classificationManager) ClassifyTask(ctx context.Context, messages []taskcomplexity.Message, cwd, gitBranch string) (taskcomplexity.Result, string, error) {
 	if m == nil || m.complexity == nil {
 		return taskcomplexity.Result{}, "", fmt.Errorf("task complexity classifier is unavailable")
 	}
-	exchange := append([]taskcomplexity.Message(nil), m.complexityExchange...)
 	result, err := m.complexity.Classify(ctx, taskcomplexity.Input{
-		Messages:  exchange,
+		Messages:  messages,
 		Cwd:       cwd,
 		GitBranch: gitBranch,
 	})

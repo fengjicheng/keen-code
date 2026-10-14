@@ -6,8 +6,10 @@ Add task-complexity classification backed by TypeSafe's **Jev** decision model. 
 enabled, Keen classifies each accepted user turn as `simple`, `standard`, or
 `complex`, and displays the result in the REPL.
 
-Nothing is routed or switched in v1: the active chat model remains exactly as the
-user configured it. This feature is classification and display only.
+The classifier emits signals; it does not select a model. Model routing consumes
+them: when routing is enabled, Keen switches the active chat model from the
+category and new-task estimates (§11.5). Without routing, the active chat model
+remains exactly as the user configured it.
 
 The implementation is deliberately split into:
 
@@ -34,25 +36,25 @@ In scope:
   result.
 - A persisted `decision` block in `~/.keen/configs.json` that supports multiple
   configured providers and selects the currently active decision provider.
-- `/model auto` to enable task-complexity classification.
-- Classification on each accepted user turn using the newest complete
-  user/assistant messages that fit an 80 KiB serialized-state budget, including
-  the current user message.
-- A one-line notice containing the category, selected-category probability, and
-  consequentiality probability.
+- `/decision model` to select the decision provider and model, and `/model router` to
+  enable classification and routing.
+- Classification on each accepted user turn, built from the agent's conversation
+  (committed messages plus any uncommitted partial assistant turn) using the newest
+  complete messages that fit an 80 KiB serialized-state budget, including the
+  current user message.
+- A one-line notice containing the category, selected-category probability,
+  consequentiality probability, and new-task probability.
 - Decision-model token usage recorded in the existing usage ledger.
 
 ## 3. Explicit non-goals for v1
 
 Deferred, not rejected:
 
-- Chat-model/provider switching, category-to-model mapping, tier resolution, and
-  routing policy.
 - UI for choosing or editing the active decision provider/model. The config shape
   supports this future UI, but v1 does not add a provider-selection command or
   picker.
-- Per-category confidence thresholds, confidence gating, or consequentiality
-  gating.
+- Thresholdisation of `Result.Confidence`. The routing policy gates on the
+  selected-category probability and the new-task estimate instead.
 - Capability filtering (context window, tools, modality).
 - Headless (`keen run`) participation.
 - Persisting decisions to session JSONL, explain/listing commands, shadow mode,
@@ -66,19 +68,22 @@ Deferred, not rejected:
 | --- | --- |
 | 1 | Jev classifies task complexity; it is not asked to select a chat model. |
 | 2 | Categories are `simple`, `standard`, and `complex`. |
-| 3 | Activation is opt-in via `/model auto`; the enabled state persists. |
-| 4 | `/model auto` is command-only; no `auto` entry is added to the model picker. |
-| 5 | The current chat provider, model, and thinking effort remain unchanged. |
-| 6 | A successful result displays `task: standard (p=0.62) · consequential (p=0.81)`. |
+| 3 | Activation is opt-in via `/model router`; the enabled state persists. |
+| 4 | `/model router` is entered as a command and appears in `/model` suggestions; the model picker has no `router` entry. |
+| 5 | Classification alone never changes the chat model; only the router switches it. |
+| 6 | A successful result displays `task: standard (p=0.62) · consequential (p=0.81) · new task (p=0.37)`. |
 | 7 | Manual `/model <provider>/<model>` does **not** disable decision tasks. |
 | 8 | Enabled without a usable active decision evaluator remains inert and shows a configuration hint at enable time. |
-| 9 | No decision-provider selection or listing command is added in v1. |
+| 9 | `/decision` reports the active decision model and `/decision model` selects it. |
 | 10 | Trigger on each accepted user turn, using the newest complete exchange suffix fitting the 80 KiB serialized-state budget. |
 | 11 | Timeout or failure skips classification silently (fail open). |
 | 12 | Successful decision-model usage is written to the existing usage ledger; session JSONL is unchanged. |
 | 13 | Shared decision APIs contain no conversation, task-complexity, bash-command, or UI types. |
 | 14 | Configuration supports multiple decision providers and an active provider selection. |
 | 15 | The TypeSafe request timeout is 3 seconds with no retry. |
+| 16 | The classifier reports a new-task estimate alongside the category and consequentiality estimates. |
+| 17 | The first classified prompt of a session is always a new task. |
+| 18 | The router switches models on new-task probability ≥ 0.6, or on category probability > 0.8 when the target category is a higher tier than the active model. |
 
 ## 5. Architecture
 
@@ -160,6 +165,13 @@ providers:
     models:
       - id: jev-1.13.0
         name: Jev 1.13
+  - id: liquid
+    name: Liquid AI
+    models:
+      - id: d1
+        name: D1
+      - id: d1:free
+        name: D1 Free
 ```
 
 The embedded registry validates provider and model IDs, verifies that the active
@@ -223,6 +235,7 @@ type Result struct {
     Probability   float64
     Confidence    float64
     Consequential float64
+    NewTask       float64
     Model         string
     Usage         decision.Usage
 }
@@ -255,18 +268,15 @@ truncation. Do not send tool calls, tool outputs, reasoning, turn memory,
 compaction summaries, or rendered transcripts. Keep roles explicit. Treat all
 message content as data, not as instructions to the decision model.
 
-Maintain the exchange separately from the agent's model context so compaction
-cannot erase it. Use accepted user input without Keen's model-facing formatting
-and completed assistant turns' user-facing `Message` fields. `/clear` and `/new`
-start a fresh exchange. A resumed session also starts with an empty classifier
-exchange: the next accepted user message begins a new classification context.
-Enabling `/model auto` mid-session uses the existing exchange at the next accepted
-user turn; it does not classify earlier turns. Do not persist classifier-only
-message copies or results.
+Classifier input is derived from the agent's conversation at classification time.
+Tool calls, reasoning, turn memory, and other non-user/assistant messages are
+excluded: only `user` and `assistant` text reaches the decision model. Deriving it
+this way means compaction summaries are included as ordinary messages, and a
+compacted conversation has no recoverable history before the summary.
 
-Take a snapshot of the prior exchange and append the current user message before
-the asynchronous evaluation. Do not include the assistant reply being generated
-for the current turn.
+Take a snapshot of the conversation plus the current user message before the
+asynchronous evaluation. Do not include the assistant reply being generated for the
+current turn.
 
 ### 6.1 State budget
 
@@ -296,7 +306,7 @@ or otherwise evaluate shell commands locally as part of classification.
 
 ## 7. Task-complexity questions
 
-The task layer sends both questions in one `decision.Request`:
+The task layer sends all three questions in one `decision.Request`:
 
 ```json
 {
@@ -305,7 +315,7 @@ The task layer sends both questions in one `decision.Request`:
     "cwd": "keen-code",
     "git_branch": "feature/jev-classifier",
     "messages": [
-      { "role": "user", "content": "add a /model auto option that classifies the session task" },
+      { "role": "user", "content": "add a /model router option that classifies the session task" },
       { "role": "assistant", "content": "I can add the classifier without switching the active model. Should I proceed?" },
       { "role": "user", "content": "Looks good." }
     ]
@@ -323,12 +333,16 @@ The task layer sends both questions in one `decision.Request`:
     "consequential": {
       "type": "noul",
       "instructions": "If the work requested or authorized by the latest user message, in the context of the preceding conversation, were done incorrectly or incompletely, could it plausibly affect production systems, credentials, access permissions, or billing?"
+    },
+    "new_task": {
+      "type": "noul",
+      "instructions": "Estimate whether the latest user message starts a new task unrelated to the user's last task. Judge against the last task, not merely the immediately preceding message. Follow-ups, clarifications, corrections, and next steps for the last task are continuations, even if they introduce a distinct subtask. A task is new when its objective is unrelated to the last task. If there is no preceding user task in the provided conversation, return 1."
     }
   }
 }
 ```
 
-Both questions use the same state in one call. `criteria` and instructions are
+All three questions use the same state in one call. `criteria` and instructions are
 owned by the task-complexity package and are not part of TypeSafe evaluator
 configuration.
 
@@ -341,47 +355,40 @@ task parser then maps:
 - `Result.Probability` ← `answers.category.probabilities[choice]`
 - `Result.Confidence` ← `answers.category.confidence`
 - `Result.Consequential` ← `answers.consequential.noul`
+- `Result.NewTask` ← `answers.new_task.noul`
 - `Result.Model` ← top-level response `model`
 - `Result.Usage` ← response `usage`
 
-The task parser rejects a missing `category` or `consequential` answer, a
-category outside the three configured labels, a missing selected-category
+The task parser rejects a missing `category`, `consequential`, or `new_task` answer,
+a category outside the three configured labels, a missing selected-category
 probability, or invalid task-result values. These are classification failures and
 are handled fail-open.
 
 ## 9. UX
 
-### 9.1 Enabling — `/model auto`
+### 9.1 Enabling — `/model router` and `/decision model`
 
-`/model auto` is intercepted in `dispatchCommand` before the existing
-`/model <provider>/<model>` branch.
+`/decision model` selects the decision provider, model, and credentials used for
+classification. `/model router` configures the simple, standard, and complex
+models and enables routing; see [`docs/cli-usage.md`](cli-usage.md#model-router).
 
-On success:
-
-```text
-  ✓ Auto classification enabled — task categories will be shown each session
-```
-
-It sets `globalCfg.Decision.Enabled = true` and persists through `loader.Save`.
-It does not change the active chat provider, chat model, thinking effort, or
-active decision provider. If the configured active decision evaluator cannot be
-constructed (for example, no TypeSafe key is available), it remains enabled but
-inert and prints a configuration hint.
-
-`/model auto` is a v1 compatibility/activation command for task-complexity
-classification only. It is not a general decision-provider selector.
+Without a usable decision evaluator (for example, no TypeSafe key), routing cannot
+be enabled and Keen prints a configuration hint.
 
 ### 9.2 Notice
 
 After successful classification:
 
 ```text
-  task: standard (p=0.62) · consequential (p=0.81)
+```text
+  task: standard (p=0.62) · consequential (p=0.81) · new task (p=0.37)
 ```
 
-`p` is the probability assigned to the selected category. `consequential` is
-display-only in v1. Render the line using the existing highlighted completion
-notice style followed by an empty line. Classification failures print nothing.
+`p` is the probability assigned to the selected category. `new task` is the `noul`
+estimate that the prompt starts a new task. `consequential` is display-only. Render
+the line using the existing highlighted completion notice style followed by an empty
+line. A classification failure prints a notice that the active model is kept.
+instead.
 
 ### 9.3 Manual chat-model selection
 
@@ -448,31 +455,29 @@ provider-key behavior; the loader writes the file with mode `0600`.
 `RunREPL` loads the supported decision catalog, resolves the configured active
 provider/model, and constructs a `taskcomplexity.Classifier` when decision
 classification is enabled and an evaluator is available. The REPL's
-`classificationManager` stores the typed classifier and its separate
-task-complexity exchange.
+`classificationManager` stores the typed classifier. Classifier input is rebuilt
+from the agent conversation on each classification rather than kept in a separate
+exchange.
 
-Update the exchange for accepted user turns and completed user-facing assistant
-replies. Reset it on `/clear` and `/new`. A resumed session starts with an empty
-classifier exchange; the next accepted user message begins a new classification
-context. Do not derive it from compacted model context. Exclude empty/tool-only
-assistant turns; interrupted or error turns include only user-facing text actually
-produced, if any.
+Rebuilding from the agent conversation keeps the classifier aligned with history
+after `/clear`, `/new`, compaction, and session resume, with no separate buffer to
+reset. `taskComplexityMessages` drops system and tool messages; uncommitted partial
+assistant turns are re-inserted at their recorded positions.
 
 ### 11.2 Trigger
 
 In `submitInput`, after command dispatch declines input, user-message persistence
 succeeds, and `agentCore.Submit` accepts the turn:
 
-1. record the original accepted user input in the classification manager's task-complexity exchange;
-2. take a copy of the exchange plus `cwd` and Git branch;
+1. build classifier input from the agent conversation plus the accepted user message;
+2. snapshot the messages, `cwd`, and Git branch;
 3. start the asynchronous task-complexity command alongside model streaming.
 
 Do not classify commands or failed submissions. Keep original accepted input for
-live classification. Append assistant messages only when a turn completes, not
-while it streams.
+live classification.
 
 ```go
-type classifyResultMsg struct {
+type routerResultMsg struct {
     result taskcomplexity.Result
     err    error
 }
@@ -484,9 +489,9 @@ changed by later submissions or completed assistant turns.
 
 ### 11.3 Result handling
 
-`updateNormalMode` handles `classifyResultMsg` through a small helper:
+`updateNormalMode` handles `routerResultMsg` through `handleRouterResult`:
 
-- on an error, return silently;
+- on an error, print the unavailable notice and keep the active model;
 - on success, append the highlighted classification notice using the existing
   output builder, record usage, and refresh the viewport.
 
@@ -500,6 +505,25 @@ regardless of decision-model availability or response timing.
 Commands, tool-loop continuations, subagent turns, compaction, session-title
 generation, `/btw`, and `/adversary` are deliberately excluded. Only accepted
 user turns in `submitInput` trigger the v1 task-complexity classifier.
+
+### 11.5 Routed switching
+
+The router consumes the classifier result in `handleRouterResult`. The new-task
+estimate decides *whether* to switch; the selected-category probability decides
+*which* model to target:
+
+```text
+switch when:
+  Probability > 0.5
+  AND (NewTask >= 0.6
+       OR (Probability > 0.8 AND target tier > active tier))
+```
+
+A confident verdict only switches in the upgrade direction, so a continuation is
+never moved down to a cheaper model and the prompt cache is only paid for when work
+escalates. Tiers follow the `simple` → `standard` → `complex` order. When the active
+model is not one of the router's configured models its tier is unknown, and only the
+new-task estimate can switch. Classification failure keeps the active model.
 
 ## 12. Observability
 
@@ -522,14 +546,15 @@ result, payload, or additional event is written to session JSONL in v1.
 | --- | --- |
 | No active decision provider/evaluator or no TypeSafe API key | Inert; enabled state persists; show a one-line hint when enabled. |
 | Current message and metadata exceed 80 KiB | Skip this turn; never truncate the current message. |
-| Request timeout or outer timeout | Skip silently for this turn. |
-| Transport/DNS error | Skip silently. |
-| `429` / `529` | Skip silently. |
-| `401`, `422`, malformed body, or protocol-validation failure | Skip silently. |
-| Invalid task-complexity response | Skip silently. |
+| Request timeout or outer timeout | Keep the active model; print the unavailable notice. |
+| Transport/DNS error | Keep the active model; print the unavailable notice. |
+| `429` / `529` | Keep the active model; print the unavailable notice. |
+| `401`, `422`, malformed body, or protocol-validation failure | Keep the active model; print the unavailable notice. |
+| Invalid task-complexity response | Keep the active model; print the unavailable notice. |
 
-In every failure case, the user session continues using its configured chat model
-without interruption or partial UI state.
+In every failure case, the user session continues without interruption or partial
+UI state, using the standard router model when routing is enabled and its configured
+chat model otherwise.
 
 ## 14. Testing
 
@@ -563,8 +588,8 @@ without interruption or partial UI state.
 - State over 80 KiB drops oldest complete messages until the newest contiguous
   suffix fits; current user message remains intact. An oversized current message
   skips evaluation.
-- Missing required task answers, an out-of-set category, and absent selected
-  probability fail task parsing.
+- Missing required task answers (including `new_task`), an out-of-set category, and
+  absent selected probability fail task parsing.
 
 ### `internal/config`
 
@@ -575,16 +600,17 @@ without interruption or partial UI state.
 
 ### `internal/cli/repl`
 
-- `/model auto` enables and persists `Decision.Enabled`, emits confirmation, and
-  changes no chat-model state.
+- `/model router` enables and persists routing, emits confirmation, and leaves the
+  chat model unchanged until the next routed prompt.
 - Manual `/model <pair>` and picker selection leave decision enablement and
   active provider/model selection unchanged.
-- Each accepted `submitInput` classifies the exchange snapshot; commands and
-  failed submissions do not.
-- `/clear`, `/new`, and resumed sessions start with an empty classifier exchange;
-  enabling auto mid-session uses existing history.
-- Successful results render the exact notice and record usage; failures render
-  nothing.
+- Classifier input is rebuilt from the agent conversation, including uncommitted
+  partial assistant turns in their original positions.
+- A conversation with fewer than two user messages reports `NewTask` as 1.
+- The switch heuristic covers each band and boundary, including a blocked downgrade
+  and a blocked escalation from a manually selected model.
+- Successful results render the exact notice and record usage; failures render the
+  unavailable notice and keep the active model.
 
 ## 15. Future work
 
@@ -592,9 +618,7 @@ without interruption or partial UI state.
 - Additional decision providers and decision models through `registry.yaml`,
   `ProviderFactory`, and `decision.Evaluator`.
 - Additional typed task packages, such as bash-command safety classification.
-- Routing policy that consumes one or more task results while remaining separate
-  from the task and provider layers.
-- Category confidence thresholds, consequentiality gating, capability filtering,
-  and model-selection policy.
+- Routing policy refinements: a confirm step for the ambiguous band, switching
+  hysteresis, and capability filtering.
 - Headless operation, explain/listing views, decision persistence, and replay
   tooling.

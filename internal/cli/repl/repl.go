@@ -477,9 +477,6 @@ func (m *replModel) submitPrompt(input string, fromQueue, routed bool) (replMode
 		return *m, nil
 	}
 
-	if !routed {
-		m.classifiers.RecordUserMessage(input)
-	}
 	m.startLoading(nextLoadingText())
 	m.startAssistantTurnMemory()
 	m.stream.handler.Start(eventCh, m.loading.text)
@@ -1024,7 +1021,7 @@ func (m replModel) inputMetaModel() string {
 	if m.routerEnabled() && m.ctx.globalCfg.Decision != nil {
 		d := m.ctx.globalCfg.Decision
 		model := d.ActiveProvider + "/" + d.ActiveModel + " (router)"
-		if m.ctx.cfg != nil && m.ctx.cfg.Provider != "" && m.ctx.cfg.Model != "" {
+		if m.ctx.cfg != nil && m.ctx.cfg.Provider != "" && m.ctx.cfg.Model != "" && m.currentRoutingTier() >= 0 {
 			model += " → " + m.ctx.cfg.Provider + "/" + m.ctx.cfg.Model
 		}
 		return model

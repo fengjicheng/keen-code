@@ -204,10 +204,17 @@ func TestModel_ThinkingEffortsLoadFromYAML(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to find opencode-go provider")
 	}
-	if len(opencode.Models) != 27 {
-		t.Fatalf("expected 27 opencode-go models, got %d", len(opencode.Models))
+	if len(opencode.Models) != 28 {
+		t.Fatalf("expected 28 opencode-go models, got %d", len(opencode.Models))
 	}
 
+	haiku, haikuOK := reg.GetModel("opencode-go", "claude-haiku-5-5")
+	if !haikuOK {
+		t.Fatal("expected to find opencode-go/claude-haiku-5-5")
+	}
+	if haiku.Name != "Claude Haiku 5.5" || haiku.ContextWindow != 1000000 || haiku.SupportsThinkingEffort() {
+		t.Fatalf("unexpected OpenCode Go Haiku metadata: %+v", haiku)
+	}
 	grok47, ok := reg.GetModel("opencode-go", "grok-4.7")
 	if !ok {
 		t.Fatal("expected to find opencode-go/grok-4.7")

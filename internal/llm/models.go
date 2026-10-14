@@ -168,7 +168,7 @@ func isOpenCodeGoMiniMaxModel(model string) bool {
 }
 
 func isOpenCodeGoAnthropicModel(model string) bool {
-	return isOpenCodeGoMiniMaxModel(model) || isOpenCodeGoQwenModel(model)
+	return isOpenCodeGoMiniMaxModel(model) || isOpenCodeGoQwenModel(model) || strings.HasPrefix(model, "claude-")
 }
 
 func isOpenCodeGoDeepSeekModel(model string) bool {

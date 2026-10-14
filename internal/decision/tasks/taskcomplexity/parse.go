@@ -16,6 +16,10 @@ func parseResponse(response decision.Response) (Result, error) {
 	if !ok || consequentialAnswer.Type != decision.QuestionNoul {
 		return Result{}, fmt.Errorf("missing consequential answer")
 	}
+	newTaskAnswer, ok := response.Answers["new_task"]
+	if !ok || newTaskAnswer.Type != decision.QuestionNoul {
+		return Result{}, fmt.Errorf("missing new task answer")
+	}
 
 	category := Category(categoryAnswer.Choice)
 	switch category {
@@ -24,7 +28,7 @@ func parseResponse(response decision.Response) (Result, error) {
 		return Result{}, fmt.Errorf("invalid task complexity category %q", category)
 	}
 	probability, ok := categoryAnswer.Probabilities[categoryAnswer.Choice]
-	if !ok || !validProbability(probability) || !validProbability(categoryAnswer.Confidence) || !validProbability(consequentialAnswer.Noul) {
+	if !ok || !validProbability(probability) || !validProbability(categoryAnswer.Confidence) || !validProbability(consequentialAnswer.Noul) || !validProbability(newTaskAnswer.Noul) {
 		return Result{}, fmt.Errorf("invalid task complexity result")
 	}
 	return Result{
@@ -32,6 +36,7 @@ func parseResponse(response decision.Response) (Result, error) {
 		Probability:   probability,
 		Confidence:    categoryAnswer.Confidence,
 		Consequential: consequentialAnswer.Noul,
+		NewTask:       newTaskAnswer.Noul,
 		Model:         response.Model,
 		Usage:         response.Usage,
 	}, nil

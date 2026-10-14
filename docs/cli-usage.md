@@ -169,7 +169,11 @@ Use `/decision model` to configure the classifier, then `/model router` to enabl
 - Selecting a regular model disables routing.
 - Without a decision model, Keen shows: Configure decision model with `/decision model` command to use router.
 
-Router selections and activation persist in the selected model configuration file (`~/.keen/configs.json` by default, or the file passed to `--model-config`). Each prompt is classified before its response starts; classification errors or the five-second timeout fall back to the standard model. While enabled, the input metadata shows `<decision-provider>/<decision-model> (router)`.
+Router selections and activation persist in the selected model configuration file (`~/.keen/configs.json` by default, or the file passed to `--model-config`). Each prompt is classified before its response starts. A classification error or the five-second timeout keeps the active model and submits the prompt anyway. While enabled, the input metadata shows `<decision-provider>/<decision-model> (router)`.
+
+Alongside the task category, the classifier reports the category **probability** and a **new-task** probability. Keen switches to the category model when the category probability is above 50% and either the new-task probability is at least 60%, or the category probability is above 80% and the category model is a more capable tier than the active one. Everything else is treated as a continuation and keeps the active model.
+
+The new-task signal decides *whether* to switch; the category probability decides *which* model to target. A confident verdict only switches in the upgrade direction, so a continuation is never moved down to a cheaper model, and the prompt cache is only paid for when work is escalating. When the active model is not one of the router's configured models, the tier is unknown and only the new-task signal can switch.
 
 ## `/router`
 

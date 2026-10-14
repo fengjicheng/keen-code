@@ -1203,7 +1203,6 @@ func (m *replModel) handleClearCommand() replModel {
 	}
 	m.history.Reset()
 	m.loading.lastTurnElapsedMsg = ""
-	m.classifiers.Reset()
 	m.adjustTextareaHeight()
 
 	newOutput := reploutput.NewOutputBuilder(m.width, m.ctx.workingDir)

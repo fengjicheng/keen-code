@@ -31,6 +31,7 @@ type Result struct {
 	Probability   float64
 	Confidence    float64
 	Consequential float64
+	NewTask       float64
 	Model         string
 	Usage         decision.Usage
 }
@@ -56,7 +57,27 @@ func (c *Classifier) Classify(ctx context.Context, input Input) (Result, error) 
 	if err != nil {
 		return Result{}, err
 	}
-	return parseResponse(response)
+	result, err := parseResponse(response)
+	if err != nil {
+		return Result{}, err
+	}
+	if !hasPreviousUserTask(input.Messages) {
+		result.NewTask = 1
+	}
+	return result, nil
+}
+
+func hasPreviousUserTask(messages []Message) bool {
+	userMessages := 0
+	for _, message := range messages {
+		if message.Role == "user" {
+			userMessages++
+			if userMessages == 2 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (c *Classifier) EvaluatorID() string {

@@ -72,6 +72,7 @@ Implementations:
 
 MiniMax uses `AnthropicClient` with `https://api.minimax.io/anthropic`.
 OpenCode Go is routed by model format: `minimax-*` and `qwen*` models use `AnthropicClient`, while GLM, Kimi, DeepSeek, MiMo, and Hy3/Hy4 preview models use `OpenAICompatibleClient`. GPT-5.6 Luna, Grok 4.6, and Muse Spark contributor models use `OpenAIResponsesClient`.
+Claude Haiku 5.5 uses the OpenCode Go Anthropic Messages API through the Anthropic SDK.
 
 ### Tools (`internal/tools/`)
 

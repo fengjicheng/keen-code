@@ -77,7 +77,7 @@ func (m *Model) routerSelectionPrompt() string {
 	case config.RouterCategoryStandard:
 		number = 2
 		description = "Everyday coding, debugging, and multi-step tasks."
-		recommendation = "Choose a balanced model. This also handles prompts when classification fails."
+		recommendation = "Choose a balanced model for everyday coding and debugging."
 	case config.RouterCategoryComplex:
 		number = 3
 		headerStyle = headerStyle.Foreground(repltheme.AccentColor)

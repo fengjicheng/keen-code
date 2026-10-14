@@ -8,6 +8,7 @@ import (
 	"github.com/mochow13/keen-code/internal/config"
 	"github.com/mochow13/keen-code/internal/decision/tasks/taskcomplexity"
 	"github.com/mochow13/keen-code/internal/providers"
+	"github.com/mochow13/keen-code/internal/session"
 	"reflect"
 	"strings"
 	"testing"
@@ -27,6 +28,15 @@ func routerTestModel(t *testing.T) replModel {
 	m.classifiers = &classificationManager{complexity: &taskcomplexity.Classifier{}}
 	m.agentCore.(*mockAgentCore).ready = true
 	return m
+}
+
+func TestRouterInputMetaHidesUnselectedModel(t *testing.T) {
+	m := routerTestModel(t)
+	m.ctx.cfg = &config.ResolvedConfig{Provider: config.ProviderOpenAI, Model: "gpt-4.1"}
+
+	if got, want := m.inputMetaModel(), "typesafe/classifier (router)"; got != want {
+		t.Fatalf("inputMetaModel() = %q, want %q", got, want)
+	}
 }
 
 func completeRouterCategory(t *testing.T, m replModel) replModel {
@@ -93,9 +103,16 @@ func TestRouterClassifiesBeforeSubmittingAndRoutes(t *testing.T) {
 			if cmd == nil || !m.router.pending || len(m.agentCore.GetMessages()) != 0 {
 				t.Fatalf("submitted before classification: cmd=%v pending=%v messages=%d output=%q", cmd != nil, m.router.pending, len(m.agentCore.GetMessages()), m.output.Join())
 			}
-			classification := routerClassification{result: taskcomplexity.Result{Category: taskcomplexity.Category(category)}}
+			classification := routerClassification{result: taskcomplexity.Result{Category: taskcomplexity.Category(category), Probability: 0.8, Confidence: 0.9, Consequential: 0.2, NewTask: 0.85}}
 			if category == "failure" {
 				classification.err = errors.New("timeout")
+				current, err := config.ResolveProvider(m.ctx.globalCfg, config.ProviderOpenAI, "gpt-5.4-mini", "low")
+				if err != nil {
+					t.Fatal(err)
+				}
+				m.ctx.cfg = current
+				m.agentCore.SetConfig(current)
+				model = "gpt-5.4-mini"
 			}
 			if category == config.RouterCategorySimple {
 				model = "gpt-5.4-mini"
@@ -107,11 +124,14 @@ func TestRouterClassifiesBeforeSubmittingAndRoutes(t *testing.T) {
 			if m.ctx.cfg.Model != model {
 				t.Fatalf("model %s want %s; output %s", m.ctx.cfg.Model, model, m.output.Join())
 			}
-			if !strings.Contains(m.output.Join(), config.ProviderOpenAI+"/"+model) {
-				t.Fatalf("classification output missing selected provider/model: %s", m.output.Join())
+			if category != "failure" && !strings.Contains(m.output.Join(), "new task (p=0.85)") {
+				t.Fatalf("classification output missing new-task probability: %s", m.output.Join())
 			}
 			if category == "failure" && (strings.Contains(m.output.Join(), "timeout") || !strings.Contains(m.output.Join(), "Task classification unavailable")) {
 				t.Fatalf("expected safe fallback message without classifier error: %s", m.output.Join())
+			}
+			if strings.Contains(m.output.Join(), "model:") || strings.Contains(m.output.Join(), config.ProviderOpenAI+"/"+model) {
+				t.Fatalf("classification output contains selected model: %s", m.output.Join())
 			}
 			if len(m.agentCore.GetMessages()) != 1 || m.router.pending {
 				t.Fatal("routed prompt not submitted exactly once")
@@ -123,14 +143,51 @@ func TestRouterClassifiesBeforeSubmittingAndRoutes(t *testing.T) {
 	}
 
 }
-func TestRouterRecordsAssistantResponseForNextClassification(t *testing.T) {
+func TestTaskComplexityMessagesRebuildsFromAgentConversation(t *testing.T) {
+	got := taskComplexityMessages([]agentcore.Message{
+		{Role: agentcore.RoleSystem, Content: "system prompt"},
+		{Role: agentcore.RoleUser, Content: "old task"},
+		{Role: agentcore.RoleAssistant, Content: "old response"},
+		{Role: agentcore.RoleAssistant, Content: ""},
+	})
+	if len(got) != 3 || got[0].Role != "user" || got[0].Content != "old task" || got[1].Role != "assistant" || got[1].Content != "old response" || got[2].Role != "assistant" {
+		t.Fatalf("task complexity messages = %#v", got)
+	}
+}
+
+func TestTaskComplexityInputInterleavesPendingTurnsInOrder(t *testing.T) {
 	m := routerTestModel(t)
-	m.classifiers.RecordUserMessage("first request")
-	m.stream.handler.Start(make(chan agentcore.StreamEvent), "Working...")
-	m.stream.handler.HandleChunk("first response")
-	m, _ = m.handleLLMDone()
-	if got := m.classifiers.complexityExchange; len(got) != 2 || got[1].Role != "assistant" || got[1].Content != "first response" {
-		t.Fatalf("classification exchange = %#v", got)
+	m.agentCore.AppendMessage(agentcore.Message{Role: agentcore.RoleUser, Content: "first request"})
+	m.rememberPendingRouterTurn(agentcore.Message{Role: agentcore.RoleAssistant, Content: "first partial"})
+	m.agentCore.AppendMessage(agentcore.Message{Role: agentcore.RoleUser, Content: "second request"})
+	m.rememberPendingRouterTurn(agentcore.Message{Role: agentcore.RoleAssistant, Content: "second partial"})
+	m.rememberPendingRouterTurn(agentcore.Message{Role: agentcore.RoleAssistant, Content: "third partial"})
+
+	var contents []string
+	for _, message := range m.taskComplexityInput("next request") {
+		contents = append(contents, message.Content)
+	}
+	want := []string{"first request", "first partial", "second request", "second partial", "third partial", "next request"}
+	if !reflect.DeepEqual(contents, want) {
+		t.Fatalf("classifier input = %v, want %v", contents, want)
+	}
+	if len(m.agentCore.GetMessages()) != 2 {
+		t.Fatalf("classifier input mutated the conversation: %#v", m.agentCore.GetMessages())
+	}
+}
+
+func TestRouterRebuildsClassifierStateFromResumedSession(t *testing.T) {
+	m := routerTestModel(t)
+	loaded := &session.LoadedSession{Events: []session.Event{
+		{Kind: session.KindUserMessage, UserMessage: &session.MessagePayload{Content: "resume this task"}},
+		{Kind: session.KindAssistantTurn, AssistantTurn: &session.AssistantTurnPayload{Message: "I will continue."}},
+	}}
+	m.replayLoadedSession(loaded)
+	m, _ = m.beginRouterPrompt("continue the same task", false)
+	messages := taskComplexityMessages(m.agentCore.GetMessages())
+	messages = append(messages, taskcomplexity.Message{Role: "user", Content: "continue the same task"})
+	if len(messages) != 3 || messages[0].Content != "resume this task" || messages[1].Content != "I will continue." || messages[2].Content != "continue the same task" {
+		t.Fatalf("rebuilt classifier history = %#v", messages)
 	}
 }
 
@@ -190,7 +247,7 @@ func TestSelectingRegularModelDisablesRouter(t *testing.T) {
 	}
 }
 
-func TestClassifierHistoryRetainedAcrossRouterActivation(t *testing.T) {
+func TestClassifierStateUsesAgentConversationAcrossRouterActivation(t *testing.T) {
 	m := routerTestModel(t)
 	m.ctx.globalCfg.Router.Enabled = false
 	m, _ = m.submitPrompt("regular request", false, false)
@@ -198,17 +255,8 @@ func TestClassifierHistoryRetainedAcrossRouterActivation(t *testing.T) {
 	m, _ = m.handleLLMDone()
 	m.ctx.globalCfg.Router.Enabled = true
 	m, _ = m.beginRouterPrompt("routed request", false)
-	if got := m.classifiers.complexityExchange; len(got) != 3 || got[0].Content != "regular request" || got[1].Role != "assistant" || got[1].Content != "regular response" || got[2].Content != "routed request" {
-		t.Fatalf("classification exchange = %#v", got)
-	}
-	m, _ = m.handleRouterResult(routerResultMsg{generation: m.router.generation, input: "routed request", classification: routerClassification{result: taskcomplexity.Result{Category: taskcomplexity.Category(config.RouterCategoryStandard)}}})
-	if len(m.classifiers.complexityExchange) != 3 {
-		t.Fatal("routed request was recorded twice")
-	}
-	m.stream.handler.HandleChunk("routed response")
-	m, _ = m.handleLLMDone()
-	if got := m.classifiers.complexityExchange; len(got) != 4 || got[3].Content != "routed response" {
-		t.Fatalf("classification exchange = %#v", got)
+	if got := taskComplexityMessages(m.agentCore.GetMessages()); len(got) != 2 || got[0].Content != "regular request" || got[1].Content != "regular response" {
+		t.Fatalf("task complexity messages = %#v", got)
 	}
 }
 
@@ -239,10 +287,90 @@ func TestRouterReusesClientWhenResolvedConfigUnchanged(t *testing.T) {
 	backend := m.agentCore.(*mockAgentCore)
 	for _, category := range []string{config.RouterCategorySimple, config.RouterCategoryStandard} {
 		m.router.pending = true
-		m, _ = m.handleRouterResult(routerResultMsg{input: "continue", classification: routerClassification{result: taskcomplexity.Result{Category: taskcomplexity.Category(category)}}})
+		m, _ = m.handleRouterResult(routerResultMsg{input: "continue", classification: routerClassification{result: taskcomplexity.Result{Category: taskcomplexity.Category(category), Probability: 0.9, NewTask: 1}}})
 	}
 	if backend.updateCount != 0 {
 		t.Fatalf("unchanged routing recreated client %d times", backend.updateCount)
+	}
+}
+
+func TestRouterSwitchHeuristicBands(t *testing.T) {
+	tierModels := map[string]string{
+		config.RouterCategorySimple:   "gpt-5.4-mini",
+		config.RouterCategoryStandard: "gpt-5.4",
+		config.RouterCategoryComplex:  "gpt-5.4-pro",
+	}
+	for _, tc := range []struct {
+		name        string
+		category    string
+		probability float64
+		newTask     float64
+		active      string
+		switchModel bool
+	}{
+		{name: "low category probability blocks new task", category: config.RouterCategoryComplex, probability: 0.5, newTask: 0.9, active: config.RouterCategorySimple},
+		{name: "low category probability blocks escalation", category: config.RouterCategoryComplex, probability: 0.49, newTask: 0.1, active: config.RouterCategorySimple},
+		{name: "new task switches up", category: config.RouterCategoryComplex, probability: 0.6, newTask: 0.6, active: config.RouterCategorySimple, switchModel: true},
+		{name: "new task switches down", category: config.RouterCategorySimple, probability: 0.6, newTask: 0.6, active: config.RouterCategoryComplex, switchModel: true},
+		{name: "continuation keeps model", category: config.RouterCategoryComplex, probability: 0.6, newTask: 0.1, active: config.RouterCategorySimple},
+		{name: "continuation below new task boundary keeps model", category: config.RouterCategoryComplex, probability: 0.6, newTask: 0.5999, active: config.RouterCategorySimple},
+		{name: "confident escalation switches", category: config.RouterCategoryComplex, probability: 0.9, newTask: 0.1, active: config.RouterCategoryStandard, switchModel: true},
+		{name: "confident escalation at boundary keeps model", category: config.RouterCategoryComplex, probability: 0.8, newTask: 0.1, active: config.RouterCategoryStandard},
+		{name: "confident downgrade keeps model", category: config.RouterCategorySimple, probability: 0.9, newTask: 0.1, active: config.RouterCategoryComplex},
+		{name: "confident same tier keeps model", category: config.RouterCategoryStandard, probability: 0.9, newTask: 0.1, active: config.RouterCategoryStandard},
+		{name: "confident escalation from manual model switches", category: config.RouterCategoryComplex, probability: 0.9, newTask: 0.1, switchModel: true},
+		{name: "low-confidence classification from manual model switches", category: config.RouterCategoryComplex, probability: 0.49, newTask: 0.1, switchModel: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := routerTestModel(t)
+			m.ctx.globalCfg.Router.Simple = config.RouterModel{Provider: config.ProviderOpenAI, Model: tierModels[config.RouterCategorySimple]}
+			m.ctx.globalCfg.Router.Standard = config.RouterModel{Provider: config.ProviderOpenAI, Model: tierModels[config.RouterCategoryStandard]}
+			m.ctx.globalCfg.Router.Complex = config.RouterModel{Provider: config.ProviderOpenAI, Model: tierModels[config.RouterCategoryComplex]}
+			activeModel := "manual-model"
+			if tc.active != "" {
+				activeModel = tierModels[tc.active]
+			}
+			current, err := config.ResolveProvider(m.ctx.globalCfg, config.ProviderOpenAI, activeModel, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.ctx.cfg = current
+			m.agentCore.SetConfig(current)
+			backend := m.agentCore.(*mockAgentCore)
+			m.router.pending = true
+			m, _ = m.handleRouterResult(routerResultMsg{input: "request", classification: routerClassification{result: taskcomplexity.Result{Category: taskcomplexity.Category(tc.category), Probability: tc.probability, NewTask: tc.newTask}}})
+			if tc.switchModel {
+				if m.ctx.cfg.Model != tierModels[tc.category] || backend.updateCount != 1 {
+					t.Fatalf("routing did not switch to %s model: model=%s updates=%d", tc.category, m.ctx.cfg.Model, backend.updateCount)
+				}
+			} else if m.ctx.cfg != current || backend.cfg != current || backend.updateCount != 0 {
+				t.Fatalf("routing changed active configuration or recreated client: model=%s updates=%d", m.ctx.cfg.Model, backend.updateCount)
+			}
+			if len(m.agentCore.GetMessages()) != 1 || m.router.pending {
+				t.Fatal("prompt not submitted exactly once")
+			}
+		})
+	}
+}
+
+func TestRouterClassificationFailureKeepsActiveModel(t *testing.T) {
+	m := routerTestModel(t)
+	current, err := config.ResolveProvider(m.ctx.globalCfg, config.ProviderOpenAI, "gpt-5.4-mini", "low")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.ctx.cfg = current
+	m.agentCore.SetConfig(current)
+	m.router.pending = true
+	m, _ = m.handleRouterResult(routerResultMsg{input: "request", classification: routerClassification{err: errors.New("timeout")}})
+	if m.ctx.cfg != current || m.agentCore.(*mockAgentCore).updateCount != 0 {
+		t.Fatalf("classification failure changed the active model: model=%s updates=%d", m.ctx.cfg.Model, m.agentCore.(*mockAgentCore).updateCount)
+	}
+	if len(m.agentCore.GetMessages()) != 1 || m.router.pending {
+		t.Fatal("classification failure did not submit the prompt")
+	}
+	if !strings.Contains(m.output.Join(), "Using the current model") {
+		t.Fatalf("classification failure did not print the current-model notice: %s", m.output.Join())
 	}
 }
 
@@ -272,7 +400,7 @@ func TestRouterReinitializesClientWhenConfigurationChanges(t *testing.T) {
 				backend.ready = false
 			}
 			m.router.pending = true
-			m, _ = m.handleRouterResult(routerResultMsg{input: "hello", classification: routerClassification{result: taskcomplexity.Result{Category: taskcomplexity.CategoryStandard}}})
+			m, _ = m.handleRouterResult(routerResultMsg{input: "hello", classification: routerClassification{result: taskcomplexity.Result{Category: taskcomplexity.CategoryStandard, Probability: 0.9, NewTask: 1}}})
 			if backend.updateCount != 1 {
 				t.Fatalf("changed %s: client updates = %d, want 1; output: %s", change, backend.updateCount, m.output.Join())
 			}
@@ -305,7 +433,7 @@ func TestRouterPreservesIncompleteTurnOnModelSwitch(t *testing.T) {
 			}
 			m.ctx.globalCfg.Router.Standard.Model = "gpt-5.4-mini"
 			m.router.pending = true
-			m, _ = m.handleRouterResult(routerResultMsg{input: "continue", classification: routerClassification{result: taskcomplexity.Result{Category: taskcomplexity.CategoryStandard}}})
+			m, _ = m.handleRouterResult(routerResultMsg{input: "continue", classification: routerClassification{result: taskcomplexity.Result{Category: taskcomplexity.CategoryStandard, Probability: 0.9, NewTask: 1}}})
 			messages := m.agentCore.GetMessages()
 			if len(messages) != 3 || messages[1].Content != "partial response" || messages[1].TurnMemory == nil || len(messages[1].TurnMemory.ToolActivity) != 1 || messages[2].Content != "continue" {
 				t.Fatalf("incomplete turn lost on switch: %#v", messages)

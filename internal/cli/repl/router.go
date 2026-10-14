@@ -44,6 +44,12 @@ type routerResultMsg struct {
 
 var routerCategories = []string{config.RouterCategorySimple, config.RouterCategoryStandard, config.RouterCategoryComplex}
 
+const (
+	routerNewTaskThreshold       = 0.6
+	routerMinCategoryProbability = 0.5
+	routerEscalationProbability  = 0.8
+)
+
 func (m replModel) routerEnabled() bool {
 	return m.ctx != nil && m.ctx.globalCfg != nil && m.ctx.globalCfg.Router != nil && m.ctx.globalCfg.Router.Enabled
 }
@@ -155,7 +161,7 @@ func (m *replModel) showRouter() replModel {
 		m.output.AddStyledLine("  Automatic model routing powered by decision models", repltheme.PrimaryBoldStyle)
 		status := "disabled — using the selected model directly"
 		if r.Enabled {
-			status = repltheme.HighlightStyle.Render("enabled") + " — selecting a model for each prompt"
+			status = repltheme.HighlightStyle.Render("enabled") + " — switching models on new tasks and confident escalations"
 		}
 		m.output.AddStyledLine("  Status: "+status, repltheme.AssistantStyle)
 		if decision := m.ctx.globalCfg.Decision; decision != nil && decision.ActiveProvider != "" && decision.ActiveModel != "" {
@@ -222,14 +228,12 @@ func (m *replModel) beginRouterPrompt(input string, fromQueue bool) (replModel, 
 		m.updateViewportContent()
 		return *m, nil
 	}
-	m.classifiers.RecordUserMessage(input)
+	messages := m.taskComplexityInput(input)
 	m.router.generation++
 	generation := m.router.generation
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	m.router.cancel, m.router.pending = cancel, true
-	// Snapshot the exchange before the command runs on Bubble Tea's command goroutine.
-	manager := *m.classifiers
-	manager.complexityExchange = append(manager.complexityExchange[:0:0], m.classifiers.complexityExchange...)
+	manager := m.classifiers
 	m.startLoading("Classifying task...")
 	if !fromQueue {
 		m.textarea.Reset()
@@ -239,9 +243,29 @@ func (m *replModel) beginRouterPrompt(input string, fromQueue bool) (replModel, 
 	cwd, branch := m.ctx.workingDir, m.gitBranch
 	return *m, tea.Batch(m.loading.spinner.Tick, func() tea.Msg {
 		defer cancel()
-		result, provider, err := manager.ClassifyTask(ctx, cwd, branch)
+		result, provider, err := manager.ClassifyTask(ctx, messages, cwd, branch)
 		return routerResultMsg{generation: generation, input: input, classification: routerClassification{result: result, provider: provider, err: err}}
 	})
+}
+
+func taskComplexityMessages(messages []agentcore.Message) []taskcomplexity.Message {
+	result := make([]taskcomplexity.Message, 0, len(messages))
+	for _, message := range messages {
+		if message.Role != agentcore.RoleUser && message.Role != agentcore.RoleAssistant {
+			continue
+		}
+		result = append(result, taskcomplexity.Message{Role: string(message.Role), Content: message.Content})
+	}
+	return result
+}
+
+func (m *replModel) taskComplexityInput(input string) []taskcomplexity.Message {
+	conversation := slices.Clone(m.agentCore.GetMessages())
+	for _, turn := range slices.Backward(m.router.pendingTurns) {
+		conversation = slices.Insert(conversation, min(turn.messageCount, len(conversation)), turn.message)
+	}
+	conversation = append(conversation, agentcore.Message{Role: agentcore.RoleUser, Content: m.agentCore.FormatUserMessage(input)})
+	return taskComplexityMessages(conversation)
 }
 
 func (m *replModel) handleRouterResult(msg routerResultMsg) (replModel, tea.Cmd) {
@@ -257,13 +281,17 @@ func (m *replModel) handleRouterResult(msg routerResultMsg) (replModel, tea.Cmd)
 	}
 	selected := m.ctx.globalCfg.Router.ModelForCategory(category)
 	if classification.err != nil {
-		m.output.AddStyledLine(fmt.Sprintf("  Task classification unavailable. Using standard model: %s/%s", selected.Provider, selected.Model), repltheme.UsageHintStyle)
+		m.output.AddStyledLine("  Task classification unavailable. Using the current model.", repltheme.UsageHintStyle)
 		m.output.AddEmptyLine()
 	} else {
-		m.output.AddStyledLine(fmt.Sprintf("  task: %s (p=%.2f) · consequential (p=%.2f) · model: %s/%s", category, classification.result.Probability, classification.result.Consequential, selected.Provider, selected.Model), repltheme.FaintedStyle)
+		m.output.AddStyledLine(fmt.Sprintf("  task: %s (p=%.2f) · consequential (p=%.2f) · new task (p=%.2f)", category, classification.result.Probability, classification.result.Consequential, classification.result.NewTask), repltheme.FaintedStyle)
 		m.output.AddEmptyLine()
 	}
-	resolved, err := config.ResolveProvider(m.ctx.globalCfg, selected.Provider, selected.Model, selected.ThinkingEffort)
+	resolved := m.ctx.cfg
+	var err error
+	if m.switchesModel(category, classification) || (classification.err == nil && m.currentRoutingTier() < 0) {
+		resolved, err = config.ResolveProvider(m.ctx.globalCfg, selected.Provider, selected.Model, selected.ThinkingEffort)
+	}
 	if err == nil && (!m.agentCore.IsReady() || !reflect.DeepEqual(m.ctx.cfg, resolved)) {
 		previous := m.ctx.cfg
 		m.ctx.cfg = resolved
@@ -282,6 +310,43 @@ func (m *replModel) handleRouterResult(msg routerResultMsg) (replModel, tea.Cmd)
 	}
 	m.refreshContextStatus()
 	return m.submitPrompt(msg.input, true, true)
+}
+
+func (m *replModel) switchesModel(category string, classification routerClassification) bool {
+	if classification.err != nil {
+		return false
+	}
+	result := classification.result
+	if result.Probability <= routerMinCategoryProbability {
+		return false
+	}
+	if result.NewTask >= routerNewTaskThreshold {
+		return true
+	}
+	return result.Probability > routerEscalationProbability && m.escalatesRouting(category)
+}
+
+func routerTier(category string) int {
+	return slices.Index(routerCategories, category)
+}
+
+func (m *replModel) escalatesRouting(category string) bool {
+	current := m.currentRoutingTier()
+	return current >= 0 && routerTier(category) > current
+}
+
+func (m *replModel) currentRoutingTier() int {
+	if m.ctx == nil || m.ctx.cfg == nil || m.ctx.globalCfg == nil || m.ctx.globalCfg.Router == nil {
+		return -1
+	}
+	tier := -1
+	for i, category := range routerCategories {
+		configured := m.ctx.globalCfg.Router.ModelForCategory(category)
+		if configured.Provider == m.ctx.cfg.Provider && configured.Model == m.ctx.cfg.Model {
+			tier = i
+		}
+	}
+	return tier
 }
 
 func (m *replModel) rememberPendingRouterTurn(message agentcore.Message) {

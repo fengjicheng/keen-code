@@ -95,7 +95,6 @@ func (m *replModel) handleLLMDone() (replModel, tea.Cmd) {
 		m.output.AddLine(line)
 	}
 	m.output.AddEmptyLine()
-	m.classifiers.RecordAssistantMessage(response)
 	m.updateViewportContent()
 	m.scrollToBottomIfFollowing()
 	return m.drainQueuedInput()
@@ -125,7 +124,6 @@ func (m *replModel) handleLLMIncomplete(err error) (replModel, tea.Cmd) {
 		m.handleSessionPersistenceError(persistErr)
 	}
 	m.rememberPendingRouterTurn(assistantMessage)
-	m.classifiers.RecordAssistantMessage(partialResponse)
 	for _, line := range pendingLines {
 		m.output.AddLine(line)
 	}
@@ -163,7 +161,6 @@ func (m *replModel) handleLLMError(err error) (replModel, tea.Cmd) {
 			m.handleSessionPersistenceError(persistErr)
 		}
 	}
-	m.classifiers.RecordAssistantMessage(partialResponse)
 	for _, line := range pendingLines {
 		m.output.AddLine(line)
 	}
@@ -854,7 +851,6 @@ func (m *replModel) interruptStream(message string) {
 		m.handleSessionPersistenceError(persistErr)
 	}
 	m.rememberPendingRouterTurn(assistantMessage)
-	m.classifiers.RecordAssistantMessage(partialResponse)
 
 	m.adjustTextareaHeight()
 	m.updateViewportContent()

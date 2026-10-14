@@ -13,6 +13,8 @@ const categoryInstructions = "Classify the work requested or authorized by the l
 
 const consequentialInstructions = "If the work requested or authorized by the latest user message, in the context of the preceding conversation, were done incorrectly or incompletely, could it plausibly affect production systems, credentials, access permissions, or billing?"
 
+const newTaskInstructions = "Estimate whether the latest user message starts a new task unrelated to the user's last task. Judge against the last task, not merely the immediately preceding message. Follow-ups, clarifications, corrections, and next steps for the last task are continuations, even if they introduce a distinct subtask. A task is new when its objective is unrelated to the last task. If there is no preceding user task in the provided conversation, return 1."
+
 func buildRequest(model string, input Input) (decision.Request, error) {
 	state, err := buildState(input)
 	if err != nil {
@@ -34,6 +36,11 @@ func buildRequest(model string, input Input) (decision.Request, error) {
 			"consequential": {
 				Type:         decision.QuestionNoul,
 				Instructions: consequentialInstructions,
+			},
+
+			"new_task": {
+				Type:         decision.QuestionNoul,
+				Instructions: newTaskInstructions,
 			},
 		},
 	}, nil

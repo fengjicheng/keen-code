@@ -207,6 +207,7 @@ func TestNewClient_OpenCodeGoAnthropicModel(t *testing.T) {
 		{name: "minimax", model: "minimax-m2.7"},
 		{name: "minimax m3", model: "minimax-m3", thinkingEffort: "adaptive"},
 		{name: "qwen3.8 flash", model: "qwen3.8-flash", thinkingEffort: "enabled"},
+		{name: "claude haiku 5.5", model: "claude-haiku-5-5"},
 	}
 
 	for _, tt := range tests {
@@ -235,6 +236,9 @@ func TestNewClient_OpenCodeGoAnthropicModel(t *testing.T) {
 			}
 			if anthropicClient.contextWindowTokenCount <= 0 {
 				t.Fatalf("expected context window to be populated")
+			}
+			if anthropicClient.provider != providerconfig.Provider(config.ProviderOpenCodeGo) || anthropicBaseURL(anthropicClient.provider, "") != openCodeGoBaseURL {
+				t.Fatalf("expected OpenCode Go Anthropic SDK endpoint, provider=%s", anthropicClient.provider)
 			}
 		})
 	}

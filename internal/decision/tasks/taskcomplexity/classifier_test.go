@@ -26,6 +26,7 @@ func TestClassifierBuildsPayloadAndParsesResult(t *testing.T) {
 		Answers: map[string]decision.Answer{
 			"category":      {Type: decision.QuestionChoice, Choice: "standard", Probabilities: map[string]float64{"standard": 0.62}, Confidence: 0.4},
 			"consequential": {Type: decision.QuestionNoul, Noul: 0.81},
+			"new_task":      {Type: decision.QuestionNoul, Noul: 0.37},
 		},
 		Usage: decision.Usage{InputTokens: 12, OutputTokens: 3},
 	}}
@@ -41,7 +42,7 @@ func TestClassifierBuildsPayloadAndParsesResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Category != CategoryStandard || result.Probability != 0.62 || result.Consequential != 0.81 || result.Model != "jev-test" {
+	if result.Category != CategoryStandard || result.Probability != 0.62 || result.Consequential != 0.81 || result.NewTask != 0.37 || result.Model != "jev-test" {
 		t.Fatalf("result = %#v", result)
 	}
 	var state struct {
@@ -55,10 +56,27 @@ func TestClassifierBuildsPayloadAndParsesResult(t *testing.T) {
 	}
 }
 
+func TestClassifierMarksFirstMessageAsNewTask(t *testing.T) {
+	evaluator := &fakeEvaluator{response: decision.Response{Answers: map[string]decision.Answer{
+		"category":      {Type: decision.QuestionChoice, Choice: "simple", Probabilities: map[string]float64{"simple": 1}, Confidence: 1},
+		"consequential": {Type: decision.QuestionNoul, Noul: 0},
+		"new_task":      {Type: decision.QuestionNoul, Noul: 0.2},
+	}}}
+	classifier, _ := New(evaluator, "")
+	result, err := classifier.Classify(context.Background(), Input{Messages: []Message{{Role: "user", Content: "first"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.NewTask != 1 {
+		t.Fatalf("first message new-task probability = %v, want 1", result.NewTask)
+	}
+}
+
 func TestClassifierDropsOldMessagesToFitBudget(t *testing.T) {
 	evaluator := &fakeEvaluator{response: decision.Response{Model: "model", Answers: map[string]decision.Answer{
 		"category":      {Type: decision.QuestionChoice, Choice: "simple", Probabilities: map[string]float64{"simple": 1}, Confidence: 1},
 		"consequential": {Type: decision.QuestionNoul, Noul: 0},
+		"new_task":      {Type: decision.QuestionNoul, Noul: 0.5},
 	}}}
 	classifier, _ := New(evaluator, "")
 	_, err := classifier.Classify(context.Background(), Input{Messages: []Message{
