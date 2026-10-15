@@ -43,7 +43,7 @@ func TestDecisionSelectionConfiguresProviderModelAndKey(t *testing.T) {
 	}
 
 	m, _ = m.Update(enterKey())
-	if m.SelectedModel != "d1" || m.Step != StepAPIKey {
+	if m.SelectedModel != "d1-ultra" || m.Step != StepAPIKey {
 		t.Fatalf("model = %q, step = %v", m.SelectedModel, m.Step)
 	}
 
@@ -55,7 +55,7 @@ func TestDecisionSelectionConfiguresProviderModelAndKey(t *testing.T) {
 	if !IsComplete(cmd()) {
 		t.Fatal("expected completion message")
 	}
-	if completedProvider != "liquid" || completedModel != "d1" {
+	if completedProvider != "liquid" || completedModel != "d1-ultra" {
 		t.Fatalf("onComplete = %s/%s", completedProvider, completedModel)
 	}
 
@@ -63,7 +63,7 @@ func TestDecisionSelectionConfiguresProviderModelAndKey(t *testing.T) {
 	if decisionCfg == nil {
 		t.Fatalf("decision config = %#v", decisionCfg)
 	}
-	if decisionCfg.ActiveProvider != "liquid" || decisionCfg.ActiveModel != "d1" {
+	if decisionCfg.ActiveProvider != "liquid" || decisionCfg.ActiveModel != "d1-ultra" {
 		t.Fatalf("active = %s/%s", decisionCfg.ActiveProvider, decisionCfg.ActiveModel)
 	}
 	if got := decisionCfg.Providers["liquid"].APIKey; got != "liquid_test-key" {
@@ -82,7 +82,7 @@ func TestDecisionSelectionPromptsToKeepExistingKey(t *testing.T) {
 
 	m := newDecisionSelection(t, globalCfg, func(provider, model string) error { return nil })
 	m, _ = m.Update(enterKey()) // typesafe
-	m, _ = m.Update(enterKey()) // jev-1.13.0
+	m, _ = m.Update(enterKey()) // jev-1.14.0
 	if m.Step != StepUpdateProviderConfigs {
 		t.Fatalf("step = %v, want StepUpdateProviderConfigs", m.Step)
 	}
