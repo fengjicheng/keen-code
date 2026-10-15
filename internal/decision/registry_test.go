@@ -21,17 +21,23 @@ func TestLoadRegistry(t *testing.T) {
 	if !ok || provider.Name != "TypeSafe" {
 		t.Fatalf("provider = %#v, found = %t", provider, ok)
 	}
-	model, ok := registry.GetModel("typesafe", "jev-1.13.0")
-	if !ok || model.Name != "Jev 1.13" {
+	model, ok := registry.GetModel("typesafe", "jev-1.14.0")
+	if !ok || model.Name != "Jev 1.14" {
 		t.Fatalf("model = %#v, found = %t", model, ok)
+	}
+	if _, ok := registry.GetModel("typesafe", "jev-1.13.0"); !ok {
+		t.Fatal("previous TypeSafe model should remain supported")
 	}
 	provider, ok = registry.GetProvider("liquid")
 	if !ok || provider.Name != "Liquid AI" {
 		t.Fatalf("provider = %#v, found = %t", provider, ok)
 	}
-	model, ok = registry.GetModel("liquid", "d1")
-	if !ok || model.Name != "D1" {
+	model, ok = registry.GetModel("liquid", "d1-ultra")
+	if !ok || model.Name != "D1 Ultra" {
 		t.Fatalf("model = %#v, found = %t", model, ok)
+	}
+	if _, ok := registry.GetModel("liquid", "d1"); !ok {
+		t.Fatal("existing Liquid model should remain supported")
 	}
 }
 

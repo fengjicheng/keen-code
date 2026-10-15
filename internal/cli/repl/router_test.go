@@ -346,6 +346,13 @@ func TestRouterSwitchHeuristicBands(t *testing.T) {
 			} else if m.ctx.cfg != current || backend.cfg != current || backend.updateCount != 0 {
 				t.Fatalf("routing changed active configuration or recreated client: model=%s updates=%d", m.ctx.cfg.Model, backend.updateCount)
 			}
+			wantStatus := "not switching"
+			if tc.switchModel {
+				wantStatus = "switching"
+			}
+			if !strings.Contains(ansi.Strip(m.output.Join()), "· "+wantStatus) {
+				t.Fatalf("classification output missing %q status: %s", wantStatus, m.output.Join())
+			}
 			if len(m.agentCore.GetMessages()) != 1 || m.router.pending {
 				t.Fatal("prompt not submitted exactly once")
 			}
@@ -371,6 +378,9 @@ func TestRouterClassificationFailureKeepsActiveModel(t *testing.T) {
 	}
 	if !strings.Contains(m.output.Join(), "Using the current model") {
 		t.Fatalf("classification failure did not print the current-model notice: %s", m.output.Join())
+	}
+	if !strings.Contains(m.output.Join(), "not switching") {
+		t.Fatalf("classification failure did not indicate no model switch: %s", m.output.Join())
 	}
 }
 

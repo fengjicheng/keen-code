@@ -163,11 +163,15 @@ providers:
   - id: typesafe
     name: TypeSafe
     models:
+      - id: jev-1.14.0
+        name: Jev 1.14
       - id: jev-1.13.0
         name: Jev 1.13
   - id: liquid
     name: Liquid AI
     models:
+      - id: d1-ultra
+        name: D1 Ultra
       - id: d1
         name: D1
       - id: d1:free
@@ -310,7 +314,7 @@ The task layer sends all three questions in one `decision.Request`:
 
 ```json
 {
-  "model": "jev-1.13.0",
+  "model": "jev-1.14.0",
   "state": {
     "cwd": "keen-code",
     "git_branch": "feature/jev-classifier",
@@ -424,7 +428,7 @@ Example `~/.keen/configs.json`:
   "decision": {
     "enabled": true,
     "active_provider": "typesafe",
-    "active_model": "jev-1.13.0",
+    "active_model": "jev-1.14.0",
     "providers": {
       "typesafe": {
         "base_url": "https://api.typesafe.ai",

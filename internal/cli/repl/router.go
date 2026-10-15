@@ -279,15 +279,13 @@ func (m *replModel) handleRouterResult(msg routerResultMsg) (replModel, tea.Cmd)
 		category = string(classification.result.Category)
 		m.recordUsage(classification.provider, classification.result.Model, &agentcore.TokenUsage{InputTokens: classification.result.Usage.InputTokens, OutputTokens: classification.result.Usage.OutputTokens})
 	}
-	selected := m.ctx.globalCfg.Router.ModelForCategory(category)
 	if classification.err != nil {
-		m.output.AddStyledLine("  Task classification unavailable. Using the current model.", repltheme.UsageHintStyle)
-		m.output.AddEmptyLine()
-	} else {
-		m.output.AddStyledLine(fmt.Sprintf("  task: %s (p=%.2f) · consequential (p=%.2f) · new task (p=%.2f)", category, classification.result.Probability, classification.result.Consequential, classification.result.NewTask), repltheme.FaintedStyle)
+		m.output.AddStyledLine("  Task classification unavailable · not switching. Using the current model.", repltheme.UsageHintStyle)
 		m.output.AddEmptyLine()
 	}
-	resolved := m.ctx.cfg
+	currentConfig := m.ctx.cfg
+	selected := m.ctx.globalCfg.Router.ModelForCategory(category)
+	resolved := currentConfig
 	var err error
 	if m.switchesModel(category, classification) || (classification.err == nil && m.currentRoutingTier() < 0) {
 		resolved, err = config.ResolveProvider(m.ctx.globalCfg, selected.Provider, selected.Model, selected.ThinkingEffort)
@@ -303,13 +301,29 @@ func (m *replModel) handleRouterResult(msg routerResultMsg) (replModel, tea.Cmd)
 	}
 	if err != nil {
 		m.stopLoading()
+		if classification.err == nil {
+			m.addRouterClassificationResult(category, classification.result, false)
+		}
 		m.output.AddError("Could not initialize routed model. Check /router config and provider authentication.", repltheme.ErrorStyle)
 		m.output.AddEmptyLine()
 		m.updateViewportContent()
 		return m.drainQueuedInput()
 	}
+	if classification.err == nil {
+		switching := m.ctx.cfg != nil && (currentConfig == nil || currentConfig.Provider != m.ctx.cfg.Provider || currentConfig.Model != m.ctx.cfg.Model)
+		m.addRouterClassificationResult(category, classification.result, switching)
+	}
 	m.refreshContextStatus()
 	return m.submitPrompt(msg.input, true, true)
+}
+
+func (m *replModel) addRouterClassificationResult(category string, result taskcomplexity.Result, switching bool) {
+	status := "not switching"
+	if switching {
+		status = "switching"
+	}
+	m.output.AddStyledLine(fmt.Sprintf("  task: %s (p=%.2f) · consequential (p=%.2f) · new task (p=%.2f) · %s", category, result.Probability, result.Consequential, result.NewTask, status), repltheme.FaintedStyle)
+	m.output.AddEmptyLine()
 }
 
 func (m *replModel) switchesModel(category string, classification routerClassification) bool {
