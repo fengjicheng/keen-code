@@ -173,7 +173,7 @@ func TestBuild_IncludesToolFollowThroughInstructions(t *testing.T) {
 
 func TestBuild_ProjectMemoryIncluded(t *testing.T) {
 	dir := t.TempDir()
-	memDir := filepath.Join(dir, ".keen")
+	memDir := filepath.Join(dir, ".keen", "memory")
 	os.MkdirAll(memDir, 0755)
 	memPath := filepath.Join(memDir, "MEMORY.md")
 	os.WriteFile(memPath, []byte("- run go test -race ./... after Go changes"), 0644)

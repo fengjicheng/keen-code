@@ -9,7 +9,7 @@ Persistent memory lets Keen retain useful context across sessions beyond static 
 | File | Scope | Purpose | Cap |
 |---|---|---|---|
 | `~/.keen/memory/global/MEMORY.md` | Global | User-wide preferences and durable behavior across projects | 8 KiB |
-| `<repo>/.keen/MEMORY.md` | Project | Project-specific notes, conventions, gotchas | 16 KiB |
+| `<repo>/.keen/memory/MEMORY.md` | Project | Project-specific notes, conventions, gotchas | 16 KiB |
 
 Missing or empty files are skipped silently during prompt assembly.
 
@@ -26,7 +26,7 @@ Lists memory file paths and whether they exist.
 
 ```text
 Global memory:  ~/.keen/memory/global/MEMORY.md  exists
-Project memory: .keen/MEMORY.md                 missing
+Project memory: .keen/memory/MEMORY.md          missing
 ```
 
 If neither file exists:
@@ -66,10 +66,10 @@ There are no dedicated write commands (`/memory add`, `/memory edit`, etc.). Mem
 
 ### First Project Memory Creation
 
-When first creating `.keen/MEMORY.md`, the agent tells the user:
+When first creating `.keen/memory/MEMORY.md`, the agent tells the user:
 
 ```text
-Created .keen/MEMORY.md. Add .keen/ to .gitignore if you want it private.
+Created .keen/memory/MEMORY.md. Add .keen/ to .gitignore if you want it private.
 ```
 
 The agent does not modify `.gitignore` itself.
@@ -87,7 +87,7 @@ The agent does not modify `.gitignore` itself.
 
 - `internal/memory` — path resolution, loading with size caps, secret-pattern detection.
 - `internal/llm/systemprompt.go` — memory loaded into the system prompt during `Build`.
-- `internal/filesystem/guard.go` — `~/.keen/memory/` is allowed for reads (granted) and writes (pending user approval).
+- `internal/filesystem/guard.go` — `~/.keen/memory/` and `<repo>/.keen/memory/` are allowed for reads (granted) and writes (pending user approval), even when `.keen/` is gitignored.
 - `internal/tools/write_file.go`, `internal/tools/edit_file.go` — secret-pattern rejection before writing memory paths.
 - `internal/cli/repl/commands/commands.go` — `/memory` and `/memory show` command registration.
 - `internal/cli/repl/command_handlers.go` — `handleMemoryCommand` implementation.

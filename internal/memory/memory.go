@@ -39,7 +39,7 @@ func ProjectPath(workingDir string) string {
 	if workingDir == "" {
 		return ""
 	}
-	return filepath.Join(workingDir, ".keen", memoryFileName)
+	return filepath.Join(workingDir, ".keen", "memory", memoryFileName)
 }
 
 func Files(workingDir string) (global, project File) {

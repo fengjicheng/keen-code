@@ -1964,8 +1964,8 @@ func TestHandleMemoryCommand_ShowContents(t *testing.T) {
 	work := t.TempDir()
 	os.MkdirAll(filepath.Join(home, ".keen", "memory", "global"), 0755)
 	os.WriteFile(filepath.Join(home, ".keen", "memory", "global", "MEMORY.md"), []byte("- prefers brief"), 0644)
-	os.MkdirAll(filepath.Join(work, ".keen"), 0755)
-	os.WriteFile(filepath.Join(work, ".keen", "MEMORY.md"), []byte("- run go test -race"), 0644)
+	os.MkdirAll(filepath.Join(work, ".keen", "memory"), 0755)
+	os.WriteFile(filepath.Join(work, ".keen", "memory", "MEMORY.md"), []byte("- run go test -race"), 0644)
 
 	m := newTestModel()
 	m.ctx.workingDir = work
@@ -1983,8 +1983,8 @@ func TestHandleMemoryCommand_ShowProjectOnly(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	work := t.TempDir()
-	os.MkdirAll(filepath.Join(work, ".keen"), 0755)
-	os.WriteFile(filepath.Join(work, ".keen", "MEMORY.md"), []byte("- project note"), 0644)
+	os.MkdirAll(filepath.Join(work, ".keen", "memory"), 0755)
+	os.WriteFile(filepath.Join(work, ".keen", "memory", "MEMORY.md"), []byte("- project note"), 0644)
 
 	m := newTestModel()
 	m.ctx.workingDir = work

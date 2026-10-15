@@ -599,7 +599,7 @@ type TaskClassificationPayload struct {
 
 func TestEditFileTool_Execute_ProjectMemoryPathRejectsSecret(t *testing.T) {
 	tmpDir := t.TempDir()
-	memFile := filepath.Join(tmpDir, ".keen", "MEMORY.md")
+	memFile := filepath.Join(tmpDir, ".keen", "memory", "MEMORY.md")
 	original := "- existing note\n"
 	if err := os.MkdirAll(filepath.Dir(memFile), 0755); err != nil {
 		t.Fatal(err)
@@ -612,7 +612,7 @@ func TestEditFileTool_Execute_ProjectMemoryPathRejectsSecret(t *testing.T) {
 	tool := NewEditFileTool(guard, &mockDiffEmitter{}, &mockPermissionRequester{allow: true})
 
 	_, err := tool.Execute(context.Background(), map[string]any{
-		"path": ".keen/MEMORY.md",
+		"path": ".keen/memory/MEMORY.md",
 		"ops":  []any{map[string]any{"start": anchorForLine(t, original, 1), "text": "api_key: sk-1234567890abcdefghijklmnopqrstuvwxyz"}},
 	})
 	if err == nil {

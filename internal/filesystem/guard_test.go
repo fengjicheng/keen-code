@@ -413,9 +413,10 @@ func TestGuard_IsMemoryPath(t *testing.T) {
 		want bool
 	}{
 		{name: "global memory", path: filepath.Join(home, ".keen", "memory", "global", "MEMORY.md"), want: true},
-		{name: "project memory", path: filepath.Join(workingDir, ".keen", "MEMORY.md"), want: true},
+		{name: "project memory", path: filepath.Join(workingDir, ".keen", "memory", "MEMORY.md"), want: true},
 		{name: "project source", path: filepath.Join(workingDir, "main.go"), want: false},
-		{name: "similar project memory", path: filepath.Join(workingDir, ".keen", "MEMORY.md.bak"), want: false},
+		{name: "legacy project memory", path: filepath.Join(workingDir, ".keen", "MEMORY.md"), want: false},
+		{name: "similar project memory", path: filepath.Join(workingDir, ".keen", "memory-other", "MEMORY.md"), want: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -430,7 +431,7 @@ func TestGuard_IsMemoryPathWithoutWorkingDirectory(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	guard := NewGuard("", nil)
-	if guard.IsMemoryPath(filepath.Join(home, "project", ".keen", "MEMORY.md")) {
+	if guard.IsMemoryPath(filepath.Join(home, "project", ".keen", "memory", "MEMORY.md")) {
 		t.Fatal("guard without working directory accepted project memory")
 	}
 }
@@ -445,5 +446,40 @@ func TestGuard_MCPArtifactsPathClassification(t *testing.T) {
 	}
 	if guard.IsInMCPArtifactsDir(filepath.Join(home, ".keen", "mcp-artifacts-other", "result.txt")) {
 		t.Fatal("similar MCP artifact path was recognized")
+	}
+}
+
+func TestGuard_CheckPath_ProjectMemoryDir(t *testing.T) {
+	workingDir := t.TempDir()
+	guard := NewGuard(workingDir, nil)
+	memPath := filepath.Join(workingDir, ".keen", "memory", "MEMORY.md")
+
+	if got := guard.CheckPath(memPath, "read"); got != PermissionGranted {
+		t.Errorf("CheckPath(project memory, read) = %v, want PermissionGranted", got)
+	}
+	if got := guard.CheckPath(memPath, "write"); got != PermissionPending {
+		t.Errorf("CheckPath(project memory, write) = %v, want PermissionPending", got)
+	}
+}
+
+func TestGuard_IsBlocked_ProjectMemoryAllowedDespiteGitignore(t *testing.T) {
+	workingDir := t.TempDir()
+	gitignorePath := filepath.Join(workingDir, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte(".keen/\n"), 0644); err != nil {
+		t.Fatalf("failed to write .gitignore: %v", err)
+	}
+
+	ga := NewGitAwareness()
+	if err := ga.LoadGitignore(gitignorePath); err != nil {
+		t.Fatalf("failed to load gitignore: %v", err)
+	}
+
+	g := NewGuard(workingDir, ga)
+	memPath := filepath.Join(workingDir, ".keen", "memory", "MEMORY.md")
+	if g.IsBlocked(memPath) {
+		t.Errorf("expected project memory path to not be blocked: %s", memPath)
+	}
+	if !g.IsBlocked(filepath.Join(workingDir, ".keen", "other.md")) {
+		t.Error("expected other .keen path to stay blocked by gitignore")
 	}
 }

@@ -19,7 +19,7 @@ func writeTestFile(t *testing.T, path, content string) {
 
 func TestProjectPath(t *testing.T) {
 	got := ProjectPath("/work/repo")
-	want := filepath.Join("/work/repo", ".keen", "MEMORY.md")
+	want := filepath.Join("/work/repo", ".keen", "memory", "MEMORY.md")
 	if got != want {
 		t.Fatalf("ProjectPath = %q, want %q", got, want)
 	}

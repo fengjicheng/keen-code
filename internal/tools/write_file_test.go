@@ -442,7 +442,7 @@ func TestWriteFileTool_ProjectMemoryPathRejectsSecret(t *testing.T) {
 	mockPR := &mockPermissionRequester{allow: true}
 	tool := NewWriteFileTool(guard, nil, mockPR)
 
-	input := map[string]any{"path": ".keen/MEMORY.md", "content": "api_key: sk-1234567890abcdefghijklmnopqrstuvwxyz"}
+	input := map[string]any{"path": ".keen/memory/MEMORY.md", "content": "api_key: sk-1234567890abcdefghijklmnopqrstuvwxyz"}
 	_, err := tool.Execute(context.Background(), input)
 	if err == nil {
 		t.Fatal("expected error writing secret to project memory file")
@@ -458,7 +458,7 @@ func TestWriteFileTool_ProjectMemoryPathAllowsCleanContent(t *testing.T) {
 	mockPR := &mockPermissionRequester{allow: true}
 	tool := NewWriteFileTool(guard, nil, mockPR)
 
-	input := map[string]any{"path": ".keen/MEMORY.md", "content": "- user prefers brief responses"}
+	input := map[string]any{"path": ".keen/memory/MEMORY.md", "content": "- user prefers brief responses"}
 	result, err := tool.Execute(context.Background(), input)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

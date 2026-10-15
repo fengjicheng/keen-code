@@ -57,12 +57,12 @@ func (g *Guard) CheckPath(path string, operation string) Permission {
 		return PermissionDenied
 	}
 
-	if operation == "read" && (g.IsInSkillDir(resolved) || g.IsInKeenBashDir(resolved) || g.IsInMCPArtifactsDir(resolved) || g.IsInWebFetchArtifactsDir(resolved) || g.IsInMemoryDir(resolved)) {
+	if operation == "read" && (g.IsInSkillDir(resolved) || g.IsInKeenBashDir(resolved) || g.IsInMCPArtifactsDir(resolved) || g.IsInWebFetchArtifactsDir(resolved) || g.IsInMemoryDir(resolved) || g.IsInProjectMemoryDir(resolved)) {
 		return PermissionGranted
 	}
 
 	if operation == "write" || operation == "edit" {
-		if g.IsInMemoryDir(resolved) {
+		if g.IsInMemoryDir(resolved) || g.IsInProjectMemoryDir(resolved) {
 			return PermissionPending
 		}
 	}
@@ -88,11 +88,17 @@ func (g *Guard) IsBlocked(path string) bool {
 		return true
 	}
 
+	// Memory paths stay reachable even when gitignore covers them: project memory
+	// lives under the project's own .keen/ directory, which is commonly ignored.
+	if g.IsInMemoryDir(resolved) || g.IsInProjectMemoryDir(resolved) {
+		return false
+	}
+
 	if g.gitignore != nil && (g.gitignore.IsIgnored(path) || g.gitignore.IsIgnored(resolved)) {
 		return true
 	}
 
-	if g.IsInSkillDir(resolved) || g.IsInKeenBashDir(resolved) || g.IsInMCPArtifactsDir(resolved) || g.IsInWebFetchArtifactsDir(resolved) || g.IsInMemoryDir(resolved) {
+	if g.IsInSkillDir(resolved) || g.IsInKeenBashDir(resolved) || g.IsInMCPArtifactsDir(resolved) || g.IsInWebFetchArtifactsDir(resolved) {
 		return false
 	}
 
@@ -269,14 +275,26 @@ func (g *Guard) IsInMemoryDir(path string) bool {
 	return strings.HasPrefix(cleaned+string(filepath.Separator), prefix)
 }
 
-func (g *Guard) IsMemoryPath(path string) bool {
-	cleaned := filepath.Clean(path)
-	if g.IsInMemoryDir(cleaned) {
-		return true
+func projectMemoryDir(workingDir string) string {
+	if workingDir == "" {
+		return ""
 	}
-	if g.workingDir == "" {
+	return filepath.Join(filepath.Clean(workingDir), ".keen", "memory")
+}
+
+func (g *Guard) IsInProjectMemoryDir(path string) bool {
+	memoryDir := projectMemoryDir(g.workingDir)
+	if memoryDir == "" {
 		return false
 	}
-	projectMemory := filepath.Join(filepath.Clean(g.workingDir), ".keen", "MEMORY.md")
-	return cleaned == projectMemory
+	cleaned := filepath.Clean(path)
+	if cleaned == memoryDir {
+		return true
+	}
+	prefix := memoryDir + string(filepath.Separator)
+	return strings.HasPrefix(cleaned+string(filepath.Separator), prefix)
+}
+
+func (g *Guard) IsMemoryPath(path string) bool {
+	return g.IsInMemoryDir(path) || g.IsInProjectMemoryDir(path)
 }
