@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-10-16
+
 ### Added
+
 - Add TypeSafe Jev 1.14 and Liquid AI D1 Ultra to the decision model registry.
+- Add the OpenCode Go Claude Haiku 5.5 model, routed through the provider's Anthropic Messages API.
+- Report a new-task estimate from task-complexity classification alongside the category and consequentiality estimates.
+
+### Changed
+
+- Build classifier input from the agent conversation instead of a separate exchange, keeping classification aligned with history across `/clear`, `/new`, compaction, and session resume.
+- Switch the routed model only for new tasks and confident tier escalations, keep the active model when classification fails or times out, and display the routed model, new-task probability, and switch decision in the REPL.
+- Move project memory from `.keen/MEMORY.md` to `.keen/memory/MEMORY.md`, and keep memory paths reachable when `.keen/` is gitignored.
 
 ## [0.61.0] - 2026-10-10
 
@@ -1073,7 +1084,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GoReleaser config for cross-platform binary distribution
 - npm wrapper package for installation via `npm install -g keen-code`
 
-[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.61.0...HEAD
+[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.62.0...HEAD
+[0.62.0]: https://github.com/mochow13/keen-code/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/mochow13/keen-code/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/mochow13/keen-code/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/mochow13/keen-code/compare/v0.58.0...v0.59.0
