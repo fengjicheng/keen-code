@@ -900,3 +900,103 @@ func TestAppState_EffectiveToolRegistryYoloIncludesWriteEditBash(t *testing.T) {
 		}
 	}
 }
+
+func messageTextFixture() []core.Message {
+	exitCode := 0
+	return []core.Message{
+		{Role: core.RoleSystem, Content: "system prompt"},
+		{Role: core.RoleUser, Content: "hello"},
+		{Role: core.RoleAssistant, Content: "working", TurnMemory: &core.TurnMemory{ToolActivity: []core.HistoricalToolActivity{{
+			TextOffset: 3, Tool: "read_file",
+			Input:  map[string]any{"path": "a.go", "opts": map[string]any{"nested": []any{"x", map[string]any{"y": 1}}}},
+			Status: "success", ExitCode: &exitCode, HasRawOutput: true,
+			RawOutput: map[string]any{"rows": []any{map[string]any{"a": 1}}}, RetainedOutput: "kept",
+		}}}},
+		{Role: core.RoleAssistant, Content: ""},
+		{Role: core.RoleUser, Content: "follow-up"},
+	}
+}
+
+func seedMessageTextState(t *testing.T) *AppState {
+	t.Helper()
+	s := &AppState{}
+	s.ReplaceMessages(messageTextFixture())
+	return s
+}
+
+func TestGetMessageTextPreservesOrderAndStripsMemory(t *testing.T) {
+	s := seedMessageTextState(t)
+	want := messageTextFixture()
+	got := s.GetMessageText()
+	if len(got) != len(want) {
+		t.Fatalf("got %d messages, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].Role != want[i].Role || got[i].Content != want[i].Content {
+			t.Fatalf("index %d: got %+v, want role/content %+v", i, got[i], want[i])
+		}
+		if got[i].TurnMemory != nil {
+			t.Fatalf("index %d: TurnMemory = %+v, want nil", i, got[i].TurnMemory)
+		}
+	}
+}
+
+func TestGetMessageTextSnapshotUnaffectedByStateChanges(t *testing.T) {
+	s := seedMessageTextState(t)
+	snap := s.GetMessageText()
+	if len(snap) == 0 {
+		t.Fatal("expected non-empty snapshot")
+	}
+	first := snap[0]
+	s.AppendMessage(core.Message{Role: core.RoleUser, Content: "new"})
+	s.ReplaceMessages([]core.Message{{Role: core.RoleUser, Content: "replaced"}})
+	if snap[0] != first {
+		t.Fatalf("snapshot mutated by state change: got %+v, want %+v", snap[0], first)
+	}
+	if len(snap) != len(messageTextFixture()) {
+		t.Fatalf("snapshot length changed: got %d", len(snap))
+	}
+}
+
+func TestGetMessageTextMutationDoesNotAffectState(t *testing.T) {
+	s := seedMessageTextState(t)
+	snap := s.GetMessageText()
+	snap[0].Role = core.RoleUser
+	snap[0].Content = "mutated"
+	snap[1].Content = "mutated"
+	fresh := s.GetMessageText()
+	want := messageTextFixture()
+	for i := range want {
+		if fresh[i].Role != want[i].Role || fresh[i].Content != want[i].Content {
+			t.Fatalf("index %d: state affected by snapshot mutation: got %+v", i, fresh[i])
+		}
+	}
+	withMemory := s.GetMessages()
+	if len(withMemory) != len(want) {
+		t.Fatalf("got %d messages, want %d", len(withMemory), len(want))
+	}
+	if withMemory[2].TurnMemory == nil || len(withMemory[2].TurnMemory.ToolActivity) != 1 {
+		t.Fatalf("GetMessages lost TurnMemory: %+v", withMemory[2])
+	}
+}
+
+func TestGetMessagesRetainsDeepCopy(t *testing.T) {
+	s := seedMessageTextState(t)
+	snap := s.GetMessages()
+	snap[2].Content = "mutated"
+	snap[2].TurnMemory.ToolActivity[0].Input["path"] = "mutated"
+	fresh := s.GetMessages()
+	if fresh[2].Content != "working" {
+		t.Fatalf("content aliasing: got %q", fresh[2].Content)
+	}
+	if fresh[2].TurnMemory.ToolActivity[0].Input["path"] != "a.go" {
+		t.Fatalf("TurnMemory input aliasing: got %v", fresh[2].TurnMemory.ToolActivity[0].Input["path"])
+	}
+}
+
+func TestGetMessageTextEmpty(t *testing.T) {
+	s := &AppState{}
+	if got := s.GetMessageText(); len(got) != 0 {
+		t.Fatalf("got %d messages, want 0", len(got))
+	}
+}

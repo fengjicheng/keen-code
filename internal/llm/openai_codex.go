@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -88,7 +89,7 @@ func (c *OpenAICodexClient) StreamChat(ctx context.Context, messages []core.Mess
 		streamOpts := streamOptions(opts)
 		oneShot := streamOpts.OneShot
 		sessionID := streamOpts.SessionID
-		compactionHistory := core.CloneMessages(messages)
+		compactionHistory := slices.Clone(messages)
 		autoCompactOff := false
 		hasNewToolTurns := false
 		var injectedPending []responses.ResponseInputItemUnionParam

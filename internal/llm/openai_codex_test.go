@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -901,4 +902,102 @@ func TestOpenAICodexClient_ReportsCacheReadAndWriteTokens(t *testing.T) {
 
 func TestOpenAICodexClient_GPT61ReasoningToolLoop(t *testing.T) {
 	testGPT61ReasoningToolLoop(t, config.ProviderOpenAICodex)
+}
+
+func TestOpenAICodexStreamChatPreservesInputHistory(t *testing.T) {
+	for _, mode := range []string{"disabled", "success", "failure", "cancelled", "pending"} {
+		t.Run(mode, func(t *testing.T) {
+			backing := append(openAIHistoryFixture(), core.Message{Role: core.RoleUser, Content: "sentinel"})
+			messages := backing[:len(backing)-1]
+			before := core.CloneMessages(backing)
+			client := newTestCodexClient(t)
+			client.contextWindowTokenCount = 1
+			client.maxRetries = 1
+			if mode == "pending" {
+				client.pendingState = []responses.ResponseInputItemUnionParam{
+					responses.ResponseInputItemParamOfFunctionCall("{}", "pending_call", "read_file"),
+				}
+			}
+			toolEvent := mustResponseEvent(t, `{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"read_file","arguments":"{\"path\":\"go.mod\"}","status":"completed"},"sequence_number":1}`)
+			completed := mustResponseEvent(t, `{"type":"response.completed","sequence_number":2,"response":{"id":"resp_1","created_at":0,"metadata":{},"model":"gpt-5.4","object":"response","output":[],"parallel_tool_calls":false,"temperature":1,"tool_choice":"auto","tools":[],"top_p":1}}`)
+			textEvent := mustResponseEvent(t, `{"type":"response.output_text.delta","delta":"summary or final answer","sequence_number":1}`)
+			var requests []responses.ResponseNewParams
+			client.responseStreamImpl = func(_ context.Context, params responses.ResponseNewParams, _ ...option.RequestOption) responseStream {
+				requests = append(requests, params)
+				if len(requests) == 1 {
+					return &fakeResponseStream{events: []responses.ResponseStreamEventUnion{toolEvent, completed}}
+				}
+				if len(requests) == 2 {
+					switch mode {
+					case "failure":
+						return &fakeResponseStream{err: errors.New("compaction failed")}
+					case "cancelled":
+						return &fakeResponseStream{err: context.Canceled}
+					}
+				}
+				return &fakeResponseStream{events: []responses.ResponseStreamEventUnion{textEvent, completed}}
+			}
+			registry := tools.NewRegistry()
+			if err := registry.Register(&successToolOAI{}); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			ch, err := client.StreamChat(ctx, messages, registry, core.StreamOptions{DisableAutoCompaction: mode == "disabled"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var applied, failed, cancelled, done bool
+			for event := range ch {
+				switch event.Type {
+				case core.StreamEventTypeAutoCompactionApplied:
+					applied = true
+				case core.StreamEventTypeAutoCompactionFailed:
+					failed = true
+				case core.StreamEventTypeAutoCompactionCancelled:
+					cancelled = true
+				case core.StreamEventTypeDone:
+					done = true
+				case core.StreamEventTypeError, core.StreamEventTypeIncomplete:
+					t.Errorf("unexpected terminal event: %+v", event)
+				}
+			}
+			if ctx.Err() != nil {
+				t.Fatal(ctx.Err())
+			}
+			if !done || applied != (mode == "success") || failed != (mode == "failure") || cancelled != (mode == "cancelled") {
+				t.Fatalf("unexpected events: done=%v applied=%v failed=%v cancelled=%v", done, applied, failed, cancelled)
+			}
+			if !reflect.DeepEqual(backing, before) {
+				t.Fatal("streaming mutated input history, nested tool memory, or spare capacity")
+			}
+			wantRequests := 3
+			if mode == "disabled" || mode == "pending" {
+				wantRequests = 2
+			}
+			if len(requests) != wantRequests {
+				t.Fatalf("requests = %d, want %d", len(requests), wantRequests)
+			}
+			if mode != "disabled" && mode != "pending" {
+				body, err := json.Marshal(requests[1].Input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, want := range []string{"retained", "module github.com/user/keen-code"} {
+					if !strings.Contains(string(body), want) {
+						t.Errorf("compaction request missing tool output %q", want)
+					}
+				}
+			}
+			if mode == "pending" {
+				body, err := json.Marshal(requests[0].Input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(string(body), "pending_call") || len(client.pendingState) != 0 {
+					t.Fatal("pending state was not replayed and cleared")
+				}
+			}
+		})
+	}
 }

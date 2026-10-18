@@ -158,6 +158,7 @@ func TestTaskComplexityMessagesRebuildsFromAgentConversation(t *testing.T) {
 func TestTaskComplexityInputInterleavesPendingTurnsInOrder(t *testing.T) {
 	m := routerTestModel(t)
 	m.agentCore.AppendMessage(agentcore.Message{Role: agentcore.RoleUser, Content: "first request"})
+	m.agentCore.AppendMessage(agentcore.Message{Role: agentcore.RoleSystem, Content: "system prompt"})
 	m.rememberPendingRouterTurn(agentcore.Message{Role: agentcore.RoleAssistant, Content: "first partial"})
 	m.agentCore.AppendMessage(agentcore.Message{Role: agentcore.RoleUser, Content: "second request"})
 	m.rememberPendingRouterTurn(agentcore.Message{Role: agentcore.RoleAssistant, Content: "second partial"})
@@ -171,7 +172,7 @@ func TestTaskComplexityInputInterleavesPendingTurnsInOrder(t *testing.T) {
 	if !reflect.DeepEqual(contents, want) {
 		t.Fatalf("classifier input = %v, want %v", contents, want)
 	}
-	if len(m.agentCore.GetMessages()) != 2 {
+	if len(m.agentCore.GetMessages()) != 3 {
 		t.Fatalf("classifier input mutated the conversation: %#v", m.agentCore.GetMessages())
 	}
 }
@@ -184,8 +185,7 @@ func TestRouterRebuildsClassifierStateFromResumedSession(t *testing.T) {
 	}}
 	m.replayLoadedSession(loaded)
 	m, _ = m.beginRouterPrompt("continue the same task", false)
-	messages := taskComplexityMessages(m.agentCore.GetMessages())
-	messages = append(messages, taskcomplexity.Message{Role: "user", Content: "continue the same task"})
+	messages := m.taskComplexityInput("continue the same task")
 	if len(messages) != 3 || messages[0].Content != "resume this task" || messages[1].Content != "I will continue." || messages[2].Content != "continue the same task" {
 		t.Fatalf("rebuilt classifier history = %#v", messages)
 	}

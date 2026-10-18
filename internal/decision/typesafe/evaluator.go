@@ -65,7 +65,7 @@ func NewWithProvider(cfg Config, providerID, fallbackURL string) (*Evaluator, er
 		providerID: providerID,
 		baseURL:    baseURL,
 		apiKey:     apiKey,
-		client:     &http.Client{Timeout: 3 * time.Second},
+		client:     &http.Client{Timeout: time.Second},
 	}, nil
 }
 

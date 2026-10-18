@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -270,7 +271,7 @@ func (c *BedrockClient) StreamChat(
 		}
 		turnStartLen := len(msgParams)
 		toolConfig := toBedrockTools(toolRegistry)
-		compactionHistory := core.CloneMessages(messages)
+		compactionHistory := slices.Clone(messages)
 		autoCompactOff := false
 		hasNewToolTurns := false
 

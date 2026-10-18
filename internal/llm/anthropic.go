@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -681,7 +682,7 @@ func (c *AnthropicClient) StreamChat(
 		turnStartLen := len(msgParams)
 		anthropicTools := toAnthropicTools(toolRegistry)
 		requestOpts := c.requestOptions(streamOpts)
-		compactionHistory := core.CloneMessages(messages)
+		compactionHistory := slices.Clone(messages)
 		autoCompactOff := false
 		hasNewToolTurns := false
 

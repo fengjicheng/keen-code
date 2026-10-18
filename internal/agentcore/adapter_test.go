@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mochow13/keen-code/internal/appstate"
 	"github.com/mochow13/keen-code/internal/llm/core"
 	"github.com/mochow13/keen-code/internal/subagents"
 )
@@ -195,5 +196,135 @@ func TestPermissionRequesterAdapterDelegates(t *testing.T) {
 	allowed, err := p.RequestPermission(context.Background(), "bash", "command", "", true)
 	if !allowed || err != nil || !requester.called {
 		t.Fatalf("request was not delegated: allowed=%v, err=%v, called=%v", allowed, err, requester.called)
+	}
+}
+
+func messageTextFixture() []Message {
+	exitCode := 0
+	return []Message{
+		{Role: RoleSystem, Content: "system prompt"},
+		{Role: RoleUser, Content: "hello"},
+		{Role: RoleAssistant, Content: "working", TurnMemory: &TurnMemory{ToolActivity: []HistoricalToolActivity{{
+			TextOffset: 3, Tool: "read_file",
+			Input:  map[string]any{"path": "a.go", "opts": map[string]any{"nested": []any{"x", map[string]any{"y": 1}}}},
+			Status: "success", ExitCode: &exitCode, HasRawOutput: true,
+			RawOutput: map[string]any{"rows": []any{map[string]any{"a": 1}}}, RetainedOutput: "kept",
+		}}}},
+		{Role: RoleAssistant, Content: ""},
+		{Role: RoleUser, Content: "follow-up"},
+	}
+}
+
+func newMessageTextAdapter(msgs []Message) *adapter {
+	a := &adapter{appState: &appstate.AppState{}}
+	a.ReplaceMessages(msgs)
+	return a
+}
+
+func TestAdapterGetMessageTextPreservesOrderAndStripsMemory(t *testing.T) {
+	a := newMessageTextAdapter(messageTextFixture())
+	want := messageTextFixture()
+	got := a.GetMessageText()
+	if len(got) != len(want) {
+		t.Fatalf("got %d messages, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i].Role != want[i].Role || got[i].Content != want[i].Content {
+			t.Fatalf("index %d: got %+v, want role/content %+v", i, got[i], want[i])
+		}
+		if got[i].TurnMemory != nil {
+			t.Fatalf("index %d: TurnMemory = %+v, want nil", i, got[i].TurnMemory)
+		}
+	}
+}
+
+func TestAdapterGetMessageTextSnapshotUnaffectedByStateChanges(t *testing.T) {
+	a := newMessageTextAdapter(messageTextFixture())
+	snap := a.GetMessageText()
+	if len(snap) == 0 {
+		t.Fatal("expected non-empty snapshot")
+	}
+	first := snap[0]
+	a.AppendMessage(Message{Role: RoleUser, Content: "new"})
+	a.ReplaceMessages([]Message{{Role: RoleUser, Content: "replaced"}})
+	if snap[0] != first {
+		t.Fatalf("snapshot mutated by state change: got %+v, want %+v", snap[0], first)
+	}
+	if len(snap) != len(messageTextFixture()) {
+		t.Fatalf("snapshot length changed: got %d", len(snap))
+	}
+}
+
+func TestAdapterGetMessageTextMutationDoesNotAffectState(t *testing.T) {
+	a := newMessageTextAdapter(messageTextFixture())
+	snap := a.GetMessageText()
+	snap[0].Role = RoleUser
+	snap[0].Content = "mutated"
+	snap[1].Content = "mutated"
+	fresh := a.GetMessageText()
+	want := messageTextFixture()
+	for i := range want {
+		if fresh[i].Role != want[i].Role || fresh[i].Content != want[i].Content {
+			t.Fatalf("index %d: state affected by snapshot mutation: got %+v", i, fresh[i])
+		}
+	}
+	withMemory := a.GetMessages()
+	if len(withMemory) != len(want) {
+		t.Fatalf("got %d messages, want %d", len(withMemory), len(want))
+	}
+	if withMemory[2].TurnMemory == nil || len(withMemory[2].TurnMemory.ToolActivity) != 1 {
+		t.Fatalf("GetMessages lost TurnMemory: %+v", withMemory[2])
+	}
+}
+
+var messageTextBenchSink any
+
+func messageTextBenchmarkMessages(n int) []Message {
+	msgs := make([]Message, 0, n)
+	for i := range n {
+		m := Message{Role: RoleUser, Content: "message"}
+		switch i % 4 {
+		case 0:
+			m.Role = RoleSystem
+		case 2:
+			m.Role = RoleAssistant
+			m.Content = "assistant output"
+		case 3:
+			m.Role = RoleAssistant
+			exitCode := i
+			m.TurnMemory = &TurnMemory{ToolActivity: []HistoricalToolActivity{
+				{TextOffset: i, Tool: "read_file",
+					Input: map[string]any{"path": "file.go", "offset": i, "opts": map[string]any{
+						"tags":   []any{"a", i, map[string]any{"k": "v"}},
+						"nested": map[string]any{"depth": []any{map[string]any{"n": i}}},
+					}},
+					Status: "success", ExitCode: &exitCode, HasRawOutput: true,
+					RawOutput:      map[string]any{"rows": []any{map[string]any{"line": i, "text": "content"}}},
+					RetainedOutput: map[string]any{"summary": "kept", "index": i},
+				},
+				{TextOffset: i, Tool: "bash", Input: map[string]any{"cmd": "echo hi", "args": []any{"a", "b"}},
+					Status: "success", RawOutput: "raw output", RetainedOutput: "retained"},
+			}}
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs
+}
+
+func BenchmarkAdapterGetMessages(b *testing.B) {
+	a := newMessageTextAdapter(messageTextBenchmarkMessages(1000))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		messageTextBenchSink = a.GetMessages()
+	}
+}
+
+func BenchmarkAdapterGetMessageText(b *testing.B) {
+	a := newMessageTextAdapter(messageTextBenchmarkMessages(1000))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		messageTextBenchSink = a.GetMessageText()
 	}
 }

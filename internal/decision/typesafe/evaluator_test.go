@@ -6,9 +6,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/mochow13/keen-code/internal/decision"
 )
+
+func TestEvaluatorDefaultTimeout(t *testing.T) {
+	evaluator, err := New(Config{APIKey: "test-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evaluator.client.Timeout != time.Second {
+		t.Fatalf("timeout = %v, want %v", evaluator.client.Timeout, time.Second)
+	}
+}
 
 func TestEvaluatorEvaluate(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

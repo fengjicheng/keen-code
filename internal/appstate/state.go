@@ -54,6 +54,15 @@ func (s *AppState) GetMessages() []core.Message {
 	return core.CloneMessages(s.messages)
 }
 
+// GetMessageText returns an owned snapshot of role/content without tool metadata.
+func (s *AppState) GetMessageText() []core.Message {
+	messages := make([]core.Message, len(s.messages))
+	for i := range s.messages {
+		messages[i] = core.Message{Role: s.messages[i].Role, Content: s.messages[i].Content}
+	}
+	return messages
+}
+
 func (s *AppState) ClearMessages() {
 	s.messages = []core.Message{}
 }

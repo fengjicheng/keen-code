@@ -7,6 +7,7 @@ import (
 	"iter"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -231,7 +232,7 @@ func (c *GenkitClient) StreamChat(
 
 		streamOpts := streamOptions(opts)
 		oneShot := streamOpts.OneShot
-		compactionHistory := core.CloneMessages(messages)
+		compactionHistory := slices.Clone(messages)
 		aiMessages := toGenkitMessages(compactionHistory)
 		var injectedPending []*ai.Message
 		if !oneShot {

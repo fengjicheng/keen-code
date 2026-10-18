@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -224,7 +225,7 @@ func (c *OpenAIResponsesClient) StreamChat(
 		defer close(eventCh)
 
 		input := toOpenAIResponseInput(messages)
-		compactionHistory := core.CloneMessages(messages)
+		compactionHistory := slices.Clone(messages)
 		oneShot := streamOpts.OneShot
 		sessionID := streamOpts.SessionID
 		autoCompactOff := false

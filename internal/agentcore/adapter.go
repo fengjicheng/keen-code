@@ -106,6 +106,10 @@ func (a *adapter) GetMessages() []Message {
 	return toMessages(a.appState.GetMessages())
 }
 
+func (a *adapter) GetMessageText() []Message {
+	return toMessages(a.appState.GetMessageText())
+}
+
 func (a *adapter) ClearMessages() {
 	a.appState.ClearMessages()
 }

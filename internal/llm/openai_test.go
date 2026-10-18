@@ -3,11 +3,15 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mochow13/keen-code/internal/config"
 	"github.com/mochow13/keen-code/internal/llm/core"
@@ -1408,4 +1412,122 @@ func TestOpenAICompatibleClient_ReportsCacheReadAndWriteTokens(t *testing.T) {
 		return
 	}
 	t.Fatal("expected usage event")
+}
+
+func openAIHistoryFixture() []core.Message {
+	return []core.Message{
+		{Role: core.RoleSystem, Content: "agent prompt"},
+		{Role: core.RoleUser, Content: "continue this task"},
+		{Role: core.RoleAssistant, Content: "previous work", TurnMemory: &core.TurnMemory{
+			ToolActivity: []core.HistoricalToolActivity{{
+				Tool: "read_file", Status: "success", HasRawOutput: true,
+				Input:          map[string]any{"path": "old.go", "options": []any{map[string]any{"nested": true}}},
+				RawOutput:      map[string]any{"rows": []any{map[string]any{"text": "raw"}}},
+				RetainedOutput: map[string]any{"summary": []any{"retained"}},
+			}},
+		}},
+	}
+}
+
+func TestOpenAIStreamChatPreservesInputHistory(t *testing.T) {
+	for _, mode := range []string{"disabled", "success", "failure", "cancelled"} {
+		t.Run(mode, func(t *testing.T) {
+			// Include an occupied slot beyond len to detect writes through shared spare capacity.
+			backing := append(openAIHistoryFixture(), core.Message{Role: core.RoleUser, Content: "sentinel"})
+			messages := backing[:len(backing)-1]
+			before := core.CloneMessages(backing)
+			client := &OpenAICompatibleClient{model: "test", contextWindowTokenCount: 1, maxRetries: 1}
+			var requests []openai.ChatCompletionNewParams
+			client.streamImpl = func(_ context.Context, params openai.ChatCompletionNewParams, _ ...option.RequestOption) chatStream {
+				requests = append(requests, params)
+				switch len(requests) {
+				case 1:
+					return &fakeChatStream{chunks: []openai.ChatCompletionChunk{makeToolCallChunkWithoutReasoning()}}
+				case 2:
+					switch mode {
+					case "success":
+						return &fakeChatStream{chunks: []openai.ChatCompletionChunk{makeContentChunk("compacted summary")}}
+					case "failure":
+						return &fakeChatStream{err: errors.New("compaction failed")}
+					case "cancelled":
+						return &fakeChatStream{err: context.Canceled}
+					}
+				}
+				return &fakeChatStream{chunks: []openai.ChatCompletionChunk{makeContentChunk("done")}}
+			}
+			registry := tools.NewRegistry()
+			registry.Register(&successToolOAI{})
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			events, err := client.StreamChat(ctx, messages, registry, core.StreamOptions{DisableAutoCompaction: mode == "disabled"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var applied, failed, cancelled, done bool
+			for event := range events {
+				switch event.Type {
+				case core.StreamEventTypeAutoCompactionApplied:
+					applied = true
+				case core.StreamEventTypeAutoCompactionFailed:
+					failed = true
+				case core.StreamEventTypeAutoCompactionCancelled:
+					cancelled = true
+				case core.StreamEventTypeDone:
+					done = true
+				case core.StreamEventTypeError, core.StreamEventTypeIncomplete:
+					t.Errorf("unexpected terminal event: %+v", event)
+				}
+			}
+			if ctx.Err() != nil {
+				t.Fatal(ctx.Err())
+			}
+			if !done || applied != (mode == "success") || failed != (mode == "failure") || cancelled != (mode == "cancelled") {
+				t.Fatalf("unexpected events: done=%v applied=%v failed=%v cancelled=%v", done, applied, failed, cancelled)
+			}
+			if !reflect.DeepEqual(backing, before) {
+				t.Fatal("streaming mutated input history, nested tool memory, or spare capacity")
+			}
+			wantRequests := 3
+			if mode == "disabled" {
+				wantRequests = 2
+			}
+			if len(requests) != wantRequests {
+				t.Fatalf("requests = %d, want %d", len(requests), wantRequests)
+			}
+			if mode != "disabled" {
+				// The compaction request must contain both old and newly executed tool results.
+				request := requests[1].Messages
+				var results []string
+				for _, message := range request {
+					if message.OfTool != nil {
+						results = append(results, message.OfTool.Content.OfString.Value)
+					}
+				}
+				if len(results) != 2 || !strings.Contains(results[0], "retained") || !strings.Contains(results[1], "module github.com/user/keen-code") {
+					t.Fatalf("compaction lost historical or current tool results: %v", results)
+				}
+			}
+		})
+	}
+}
+
+var openAIHistorySink []core.Message
+
+func BenchmarkOpenAICompactionHistoryCopy(b *testing.B) {
+	messages := make([]core.Message, 1000)
+	for i := range messages {
+		messages[i] = core.CloneMessage(openAIHistoryFixture()[2])
+	}
+	b.Run("deep", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			openAIHistorySink = core.CloneMessages(messages)
+		}
+	})
+	b.Run("shallow", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			openAIHistorySink = slices.Clone(messages)
+		}
+	})
 }

@@ -260,7 +260,7 @@ func taskComplexityMessages(messages []agentcore.Message) []taskcomplexity.Messa
 }
 
 func (m *replModel) taskComplexityInput(input string) []taskcomplexity.Message {
-	conversation := slices.Clone(m.agentCore.GetMessages())
+	conversation := m.agentCore.GetMessageText()
 	for _, turn := range slices.Backward(m.router.pendingTurns) {
 		conversation = slices.Insert(conversation, min(turn.messageCount, len(conversation)), turn.message)
 	}

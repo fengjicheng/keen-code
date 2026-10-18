@@ -23,6 +23,7 @@ type AgentCore interface {
 	FormatUserMessage(content string) string
 	AppendMessage(message Message)
 	GetMessages() []Message
+	GetMessageText() []Message
 	ClearMessages()
 	ReplaceMessages(messages []Message)
 	ApplyCompaction(summary string) error

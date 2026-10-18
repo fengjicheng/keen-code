@@ -126,7 +126,14 @@ func (m *mockAgentCore) FormatUserMessage(content string) string { return conten
 func (m *mockAgentCore) AppendMessage(message agentcore.Message) {
 	m.messages = append(m.messages, message)
 }
-func (m *mockAgentCore) GetMessages() []agentcore.Message             { return m.messages }
+func (m *mockAgentCore) GetMessages() []agentcore.Message { return m.messages }
+func (m *mockAgentCore) GetMessageText() []agentcore.Message {
+	messages := make([]agentcore.Message, len(m.messages))
+	for i, message := range m.messages {
+		messages[i] = agentcore.Message{Role: message.Role, Content: message.Content}
+	}
+	return messages
+}
 func (m *mockAgentCore) ReplaceMessages(messages []agentcore.Message) { m.messages = messages }
 func (m *mockAgentCore) ApplyCompaction(summary string) error {
 	if strings.TrimSpace(summary) == "" {
