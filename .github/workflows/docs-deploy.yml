@@ -29,6 +29,7 @@ jobs:
           cp -r .ai-interactions _docs/ai-interactions
           cp -r assets _docs/
           cp .github/pages/extra.css _docs/
+          cp .github/pages/extra.js _docs/
 
       - name: Patch staged docs
         run: |

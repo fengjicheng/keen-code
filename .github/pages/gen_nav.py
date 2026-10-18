@@ -58,6 +58,7 @@ BASE_CONFIG = {
         "font": {"code": "Cascadia Code"},
     },
     "extra_css": ["extra.css"],
+    "extra_javascript": ["extra.js"],
     "extra": {
         "analytics": {
             "provider": "google",
@@ -68,10 +69,12 @@ BASE_CONFIG = {
         "attr_list",
         "pymdownx.highlight",
         "pymdownx.superfences",
+        {"pymdownx.tabbed": {"alternate_style": True}},
         "tables",
         "admonition",
         "md_in_html",
         {"toc": {"permalink": True}},
+        {"pymdownx.tabbed": {"alternate_style": True}},
         {
             "pymdownx.emoji": {
                 "emoji_index": twemoji,
