@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-10-19
+
+### Added
+
+- Add Claude Haiku 5.5 to the Anthropic model registry.
+- Document task classification, decision payloads, and automatic model routing.
+
+### Changed
+
+- Reduce conversation copying during model routing and compaction, and lower the decision HTTP timeout to one second.
+- Avoid unnecessary viewport rebuilds and debug payload formatting when logging is disabled.
+- Refresh the documentation landing page with provider cards, quick-start tabs, and feature highlights.
+
+### Fixed
+
+- Support copy shortcuts for active selections and report native clipboard failures with an OSC 52 fallback.
+- Enable Mermaid diagram rendering in MkDocs Material.
 ## [0.62.0] - 2026-10-16
 
 ### Added
@@ -1084,7 +1101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GoReleaser config for cross-platform binary distribution
 - npm wrapper package for installation via `npm install -g keen-code`
 
-[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.62.0...HEAD
+[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.63.0...HEAD
+[0.63.0]: https://github.com/mochow13/keen-code/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/mochow13/keen-code/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/mochow13/keen-code/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/mochow13/keen-code/compare/v0.59.0...v0.60.0
