@@ -6,6 +6,7 @@ import re
 import sys
 import yaml
 from material.extensions.emoji import twemoji, to_svg as emoji_to_svg
+from pymdownx.superfences import fence_code_format
 
 ACRONYMS = {"rfc", "prd", "ui", "repl", "llm", "cli", "mcp", "btw", "api", "ai"}
 TITLE_CASE = {"oauth": "OAuth"}
@@ -68,7 +69,17 @@ BASE_CONFIG = {
     "markdown_extensions": [
         "attr_list",
         "pymdownx.highlight",
-        "pymdownx.superfences",
+        {
+            "pymdownx.superfences": {
+                "custom_fences": [
+                    {
+                        "name": "mermaid",
+                        "class": "mermaid",
+                        "format": fence_code_format,
+                    }
+                ]
+            }
+        },
         {"pymdownx.tabbed": {"alternate_style": True}},
         "tables",
         "admonition",
