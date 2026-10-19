@@ -1,10 +1,12 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -1530,4 +1532,25 @@ func BenchmarkOpenAICompactionHistoryCopy(b *testing.B) {
 			openAIHistorySink = slices.Clone(messages)
 		}
 	})
+}
+
+func TestLogOpenAIMessageOrder(t *testing.T) {
+	previousLogger := slog.Default()
+	defer slog.SetDefault(previousLogger)
+
+	messages := []openai.ChatCompletionMessageParamUnion{openai.UserMessage("test prompt")}
+	var logs bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	if allocs := testing.AllocsPerRun(100, func() { logOpenAIMessageOrder(messages) }); allocs != 0 {
+		t.Fatalf("disabled debug logging allocated %v times, want zero", allocs)
+	}
+	if logs.Len() != 0 {
+		t.Fatal("disabled debug logging emitted output")
+	}
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	logOpenAIMessageOrder(messages)
+	if !strings.Contains(logs.String(), "OpenAI message order:") || !strings.Contains(logs.String(), "test prompt") {
+		t.Fatalf("missing debug message dump: %s", logs.String())
+	}
 }

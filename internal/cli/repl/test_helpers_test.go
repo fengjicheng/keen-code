@@ -230,3 +230,11 @@ func (m *mockAgentCore) WorkingDir() string { return "" }
 func (m *mockAgentCore) SetupTools(context.Context, agentcore.PermissionRequester, agentcore.DiffEmitter, agentcore.AskUserRequester, keenmcp.Runtime, bool, chan<- usage.Record) <-chan agentcore.ToolActivity {
 	return nil
 }
+
+// setClipboardWriter replaces the native clipboard writer for the duration of a
+// test and returns a function that restores the original writer.
+func setClipboardWriter(fn func(string) error) func() {
+	orig := writeClipboard
+	writeClipboard = fn
+	return func() { writeClipboard = orig }
+}

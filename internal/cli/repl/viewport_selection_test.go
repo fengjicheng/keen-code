@@ -1,6 +1,7 @@
 package repl
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -48,6 +49,8 @@ func TestViewportSelection_RenderHighlightsVisibleSelection(t *testing.T) {
 }
 
 func TestReplSelectionMouseDragCopiesOnRelease(t *testing.T) {
+	defer setClipboardWriter(func(string) error { return nil })()
+
 	m := newTestModel()
 	m.output.AddLine("hello world")
 	m.updateViewportContent()
@@ -65,11 +68,39 @@ func TestReplSelectionMouseDragCopiesOnRelease(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected copy command on mouse release")
 	}
+	copyMsg := cmd().(clipboardCopyMsg)
+	updated, _ = updated.updateNormalMode(copyMsg)
 	if updated.notification.text != copyNotificationMessage {
 		t.Fatalf("expected copy notification, got %q", updated.notification.text)
 	}
 	if got := updated.selection.selectedText(); got != "hello" {
 		t.Fatalf("expected selected text to remain available, got %q", got)
+	}
+}
+
+func TestReplSelectionMouseDragReportsFailureOnNativeCopyError(t *testing.T) {
+	defer setClipboardWriter(func(string) error { return errors.New("no clipboard") })()
+
+	m := newTestModel()
+	m.output.AddLine("hello world")
+	m.updateViewportContent()
+	m.blurInput()
+
+	m.selection.start(0, 0, 0)
+	m.selection.drag(5, 0, 0)
+
+	updated, cmd := m.updateNormalMode(tea.MouseReleaseMsg(tea.Mouse{X: 5, Y: 0, Button: tea.MouseLeft}))
+	if cmd == nil {
+		t.Fatal("expected copy command on mouse release")
+	}
+	copyMsg := cmd().(clipboardCopyMsg)
+	updated, followUp := updated.updateNormalMode(copyMsg)
+	if updated.notification.text != copyFailedNotificationMessage {
+		t.Fatalf("expected copy-failed notification, got %q", updated.notification.text)
+	}
+	batch, ok := followUp().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("expected fallback batch with notification and OSC 52, got %T", followUp)
 	}
 }
 
@@ -87,7 +118,9 @@ func TestReplSelectionMouseClickFocusesViewport(t *testing.T) {
 	}
 }
 
-func TestReplSelectionCtrlCDoesNotCopySelection(t *testing.T) {
+func TestReplSelectionCtrlCCopiesSelection(t *testing.T) {
+	defer setClipboardWriter(func(string) error { return nil })()
+
 	m := newTestModel()
 	m.output.AddLine("hello world")
 	m.updateViewportContent()
@@ -96,14 +129,27 @@ func TestReplSelectionCtrlCDoesNotCopySelection(t *testing.T) {
 
 	updated, cmd := m.updateNormalMode(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	if cmd == nil {
-		t.Fatal("expected ctrl+c to keep normal quit behavior")
+		t.Fatal("expected ctrl+c to copy the active selection")
 	}
-	if !updated.quitting {
-		t.Fatal("expected ctrl+c with selection to quit")
+	if updated.quitting {
+		t.Fatal("expected ctrl+c with an active selection not to quit")
+	}
+	if got := updated.selection.selectedText(); got != "hello" {
+		t.Fatalf("expected selection to remain available, got %q", got)
+	}
+	copyMsg, ok := cmd().(clipboardCopyMsg)
+	if !ok {
+		t.Fatalf("expected clipboard copy message, got %T", cmd())
+	}
+	updated, _ = updated.updateNormalMode(copyMsg)
+	if updated.notification.text != copyNotificationMessage {
+		t.Fatalf("expected copy notification, got %q", updated.notification.text)
 	}
 }
 
-func TestReplSelectionCmdCDoesNotCopySelection(t *testing.T) {
+func TestReplSelectionCmdCCopiesSelection(t *testing.T) {
+	defer setClipboardWriter(func(string) error { return nil })()
+
 	m := newTestModel()
 	m.output.AddLine("hello world")
 	m.updateViewportContent()
@@ -111,15 +157,34 @@ func TestReplSelectionCmdCDoesNotCopySelection(t *testing.T) {
 	m.selection.drag(5, 0, 0)
 
 	updated, cmd := m.updateNormalMode(tea.KeyPressMsg{Code: 'c', Mod: tea.ModSuper})
-	if cmd != nil {
-		t.Fatal("expected no copy command for cmd+c with active selection")
+	if cmd == nil {
+		t.Fatal("expected cmd+c to copy the active selection")
 	}
 	if updated.quitting {
 		t.Fatal("expected cmd+c not to quit")
 	}
+	if got := updated.selection.selectedText(); got != "hello" {
+		t.Fatalf("expected selection to remain available, got %q", got)
+	}
+}
+
+func TestReplSelectionCtrlCWithoutSelectionQuits(t *testing.T) {
+	m := newTestModel()
+	m.output.AddLine("hello world")
+	m.updateViewportContent()
+
+	updated, cmd := m.updateNormalMode(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if cmd == nil {
+		t.Fatal("expected ctrl+c without a selection to keep normal quit behavior")
+	}
+	if !updated.quitting {
+		t.Fatal("expected ctrl+c without a selection to quit")
+	}
 }
 
 func TestReplInputSelectionMouseDragCopiesOnRelease(t *testing.T) {
+	defer setClipboardWriter(func(string) error { return nil })()
+
 	m := newTestModel()
 	m.textarea.SetValue("hello world")
 	m.blurInput()
@@ -137,6 +202,8 @@ func TestReplInputSelectionMouseDragCopiesOnRelease(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected copy command on input mouse release")
 	}
+	copyMsg := cmd().(clipboardCopyMsg)
+	updated, _ = updated.updateNormalMode(copyMsg)
 	if updated.notification.text != copyNotificationMessage {
 		t.Fatalf("expected copy notification, got %q", updated.notification.text)
 	}
@@ -151,7 +218,33 @@ func TestReplInputSelectionMouseDragCopiesOnRelease(t *testing.T) {
 	}
 }
 
-func TestReplInputSelectionCtrlCDoesNotCopySelection(t *testing.T) {
+func TestReplInputSelectionMouseDragReportsFailureOnNativeCopyError(t *testing.T) {
+	defer setClipboardWriter(func(string) error { return errors.New("no clipboard") })()
+
+	m := newTestModel()
+	m.textarea.SetValue("hello world")
+	m.inputSelection.setContent(m.textarea.Value())
+	m.inputSelection.start(0, 0, 0)
+	m.inputSelection.drag(5, 0, 0)
+
+	updated, cmd := m.updateNormalMode(tea.MouseReleaseMsg(tea.Mouse{X: inputPromptWidth + 5, Y: m.inputAreaTop() + 1, Button: tea.MouseLeft}))
+	if cmd == nil {
+		t.Fatal("expected copy command on input mouse release")
+	}
+	copyMsg := cmd().(clipboardCopyMsg)
+	updated, followUp := updated.updateNormalMode(copyMsg)
+	if updated.notification.text != copyFailedNotificationMessage {
+		t.Fatalf("expected copy-failed notification, got %q", updated.notification.text)
+	}
+	batch, ok := followUp().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("expected fallback batch with notification and OSC 52, got %T", followUp)
+	}
+}
+
+func TestReplInputSelectionCtrlCCopiesSelection(t *testing.T) {
+	defer setClipboardWriter(func(string) error { return nil })()
+
 	m := newTestModel()
 	m.textarea.SetValue("hello world")
 	m.inputSelection.setContent(m.textarea.Value())
@@ -159,14 +252,17 @@ func TestReplInputSelectionCtrlCDoesNotCopySelection(t *testing.T) {
 	m.inputSelection.drag(5, 0, 0)
 
 	updated, cmd := m.updateNormalMode(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-	if cmd != nil {
-		t.Fatal("expected ctrl+c to clear input without copying")
+	if cmd == nil {
+		t.Fatal("expected ctrl+c to copy the active input selection")
 	}
 	if updated.quitting {
-		t.Fatal("expected ctrl+c with input value not to quit")
+		t.Fatal("expected ctrl+c with an active input selection not to quit")
 	}
-	if got := updated.textarea.Value(); got != "" {
-		t.Fatalf("expected ctrl+c to clear input, got %q", got)
+	if got := updated.textarea.Value(); got != "hello world" {
+		t.Fatalf("expected input to be preserved, got %q", got)
+	}
+	if got := updated.inputSelection.selectedText(); got != "hello" {
+		t.Fatalf("expected input selection to remain available, got %q", got)
 	}
 }
 

@@ -711,7 +711,9 @@ func (c *AnthropicClient) StreamChat(
 				params.Tools = turnTools
 			}
 
-			slog.Debug("Anthropic turn input", "messages", formatAnthropicTurnInput(turnSystem, turnMessages))
+			if slog.Default().Enabled(ctx, slog.LevelDebug) {
+				slog.Debug("Anthropic turn input", "messages", formatAnthropicTurnInput(turnSystem, turnMessages))
+			}
 
 			assistantBlocks, toolUses, usage, err := c.collectTurnWithRetry(ctx, params, eventCh, requestOpts...)
 			if err != nil {

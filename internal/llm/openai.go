@@ -128,6 +128,9 @@ func openAICompatibleBaseURL(provider providerconfig.Provider) (string, error) {
 }
 
 func logOpenAIMessageOrder(messages []openai.ChatCompletionMessageParamUnion) {
+	if !slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		return
+	}
 	prettyJSON, err := json.MarshalIndent(messages, "", "  ")
 	if err != nil {
 		slog.Debug("Failed to log OpenAI message order", "error", err)
@@ -403,8 +406,10 @@ func (c *OpenAICompatibleClient) injectPendingState(oaiMessages []openai.ChatCom
 	injectedPending := append([]openai.ChatCompletionMessageParamUnion(nil), c.pendingState...)
 
 	slog.Debug("Injecting pending state", "pending_messages", len(c.pendingState), "total_messages", len(oaiMessages))
-	if prettyJSON, err := json.MarshalIndent(c.pendingState, "", "  "); err == nil {
-		slog.Debug("Pending state contents:\n" + string(prettyJSON))
+	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		if prettyJSON, err := json.MarshalIndent(c.pendingState, "", "  "); err == nil {
+			slog.Debug("Pending state contents:\n" + string(prettyJSON))
+		}
 	}
 
 	if len(oaiMessages) > 0 {

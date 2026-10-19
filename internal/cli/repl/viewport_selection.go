@@ -15,10 +15,18 @@ import (
 )
 
 const (
-	selectionClickThreshold = 400 * time.Millisecond
-	selectionClickTolerance = 2
-	inputPromptWidth        = 3
+	selectionClickThreshold       = 400 * time.Millisecond
+	selectionClickTolerance       = 2
+	inputPromptWidth              = 3
+	copyFailedNotificationMessage = "Copy failed"
 )
+
+var writeClipboard = clipboard.WriteAll
+
+type clipboardCopyMsg struct {
+	text string
+	err  error
+}
 
 type selectionPoint struct {
 	line int
@@ -273,19 +281,38 @@ func findSelectionWordBoundaries(line string, col int) (startCol, endCol int) {
 	return col, col
 }
 
+func isCopyKey(msg tea.KeyPressMsg) bool {
+	if msg.Code != 'c' && msg.Code != 'C' {
+		return false
+	}
+	return msg.Mod&(tea.ModCtrl|tea.ModSuper) != 0
+}
+
+func (m *replModel) hasActiveSelection() bool {
+	return m.inputSelection.hasSelection() || m.selection.hasSelection()
+}
+
+func (m *replModel) activeSelectionText() string {
+	if m.inputSelection.hasSelection() {
+		return m.inputSelection.selectedText()
+	}
+	if m.selection.hasSelection() {
+		return m.selection.selectedText()
+	}
+	return ""
+}
+
 func copySelectedTextCmd(text string) tea.Cmd {
 	if text == "" {
 		return nil
 	}
-	return tea.Sequence(
-		func() tea.Msg {
-			if err := clipboard.WriteAll(text); err != nil {
-				slog.Debug("native clipboard copy failed", "error", err)
-			}
-			return nil
-		},
-		tea.SetClipboard(text),
-	)
+	return func() tea.Msg {
+		err := writeClipboard(text)
+		if err != nil {
+			slog.Debug("native clipboard copy failed", "error", err)
+		}
+		return clipboardCopyMsg{text: text, err: err}
+	}
 }
 
 func clearCopyNotificationCmd(expiresAt time.Time) tea.Cmd {
@@ -295,11 +322,18 @@ func clearCopyNotificationCmd(expiresAt time.Time) tea.Cmd {
 }
 
 func (m *replModel) copySelectedTextCmd(text string) tea.Cmd {
-	cmd := copySelectedTextCmd(text)
-	if cmd == nil {
-		return nil
+	return copySelectedTextCmd(text)
+}
+
+func (m *replModel) handleClipboardCopyMsg(msg clipboardCopyMsg) (replModel, tea.Cmd) {
+	if msg.err == nil {
+		return *m, m.showNotification(copyNotificationMessage)
 	}
-	return tea.Batch(cmd, m.showNotification(copyNotificationMessage))
+	slog.Debug("falling back to OSC 52 clipboard", "error", msg.err)
+	return *m, tea.Batch(
+		m.showNotification(copyFailedNotificationMessage),
+		tea.SetClipboard(msg.text),
+	)
 }
 
 func (m *replModel) openURLAtMouse(x, y int) tea.Cmd {

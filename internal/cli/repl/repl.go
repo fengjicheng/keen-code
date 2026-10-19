@@ -696,6 +696,8 @@ func (m replModel) updateNormalMode(msg tea.Msg) (replModel, tea.Cmd) {
 			m.adjustTextareaHeight()
 		}
 		return m, nil
+	case clipboardCopyMsg:
+		return m.handleClipboardCopyMsg(msg)
 	case subagentActivityMsg:
 		m.stream.handler.HandleSubagentActivity(msg.activity)
 		m.updateViewportContent()
@@ -744,6 +746,9 @@ func (m replModel) updateNormalMode(msg tea.Msg) (replModel, tea.Cmd) {
 		}
 
 	case tea.KeyPressMsg:
+		if isCopyKey(msg) && m.hasActiveSelection() {
+			return m, m.copySelectedTextCmd(m.activeSelectionText())
+		}
 		if m.inputSelection.hasSelection() {
 			if msg.String() == keyEsc {
 				m.inputSelection.clear()
@@ -886,6 +891,7 @@ func (m replModel) handleSpinnerTick(msg spinner.TickMsg) (replModel, tea.Cmd, b
 
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
+	refreshInline := false
 	if m.loading.showSpinner {
 		m.loading.spinner, cmd = m.loading.spinner.Update(msg)
 		cmds = append(cmds, cmd)
@@ -893,12 +899,16 @@ func (m replModel) handleSpinnerTick(msg spinner.TickMsg) (replModel, tea.Cmd, b
 	if m.btw.showSpinner {
 		m.btw.spinner, cmd = m.btw.spinner.Update(msg)
 		cmds = append(cmds, cmd)
+		refreshInline = refreshInline || cmd != nil
 	}
 	if m.adversary.showSpinner {
 		m.adversary.spinner, cmd = m.adversary.spinner.Update(msg)
 		cmds = append(cmds, cmd)
+		refreshInline = refreshInline || cmd != nil
 	}
-	m.updateViewportContent()
+	if refreshInline {
+		m.updateViewportContent()
+	}
 	return m, tea.Batch(cmds...), true
 }
 

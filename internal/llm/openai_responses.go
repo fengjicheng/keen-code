@@ -351,8 +351,10 @@ func (c *OpenAIResponsesClient) injectPendingState(input []responses.ResponseInp
 	replayedPendingInput := append([]responses.ResponseInputItemUnionParam(nil), c.pendingState...)
 
 	slog.Debug("Injecting pending state", "pending_messages", len(c.pendingState), "total_messages", len(input))
-	if prettyJSON, err := json.MarshalIndent(c.pendingState, "", "  "); err == nil {
-		slog.Debug("Pending state contents:\n" + string(prettyJSON))
+	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		if prettyJSON, err := json.MarshalIndent(c.pendingState, "", "  "); err == nil {
+			slog.Debug("Pending state contents:\n" + string(prettyJSON))
+		}
 	}
 
 	if len(input) > 0 {

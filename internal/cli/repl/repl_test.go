@@ -1264,3 +1264,71 @@ func TestInitialModel_ClassificationInitializationFailure(t *testing.T) {
 		t.Fatalf("classification must not initialize at startup: %q", output)
 	}
 }
+
+func TestHandleSpinnerTickRefreshesOnlyChangedInlineSpinners(t *testing.T) {
+	for _, name := range []string{"main", "btw", "adversary", "main-with-inline", "unrelated"} {
+		t.Run(name, func(t *testing.T) {
+			m := newTestModel()
+			m.loading.showSpinner = true
+			m.btw.showSpinner = name != "main"
+			m.adversary.showSpinner = name != "main"
+			m.adversary.spinner = spinner.New()
+			m.output.AddLine("new transcript content")
+			m.viewport.SetContent("existing viewport")
+			m.selection.setContent("existing selection")
+			msg := spinner.TickMsg{ID: m.loading.spinner.ID()}
+			switch name {
+			case "btw":
+				msg.ID = m.btw.spinner.ID()
+			case "adversary":
+				msg.ID = m.adversary.spinner.ID()
+			case "unrelated":
+				msg.ID = spinner.New().ID()
+			}
+			previousFrame := m.loading.spinner.View()
+			updated, cmd, handled := m.handleSpinnerTick(msg)
+			if !handled || (cmd != nil) != (name != "unrelated") {
+				t.Fatalf("handled=%v cmd=%v", handled, cmd)
+			}
+			if name == "btw" || name == "adversary" {
+				if !strings.Contains(updated.viewport.View(), "new transcript content") || !strings.Contains(strings.Join(updated.selection.lines, "\n"), "new transcript content") {
+					t.Fatal("inline spinner tick did not refresh viewport and selection")
+				}
+			} else {
+				if !strings.Contains(updated.viewport.View(), "existing viewport") || strings.Join(updated.selection.lines, "\n") != "existing selection" {
+					t.Fatal("tick unnecessarily rebuilt viewport or selection")
+				}
+			}
+			if name == "main" || name == "main-with-inline" {
+				if updated.loading.spinner.View() == previousFrame {
+					t.Fatal("main spinner did not advance")
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkMainSpinnerTick(b *testing.B) {
+	for _, rebuild := range []bool{false, true} {
+		name := "optimized"
+		if rebuild {
+			name = "with-viewport-rebuild"
+		}
+		b.Run(name, func(b *testing.B) {
+			m := newTestModel()
+			m.loading.showSpinner = true
+			for range 10000 {
+				m.output.AddLine("Completed transcript line with ordinary text and tool output.")
+			}
+			m.updateViewportContent()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				m, _, _ = m.handleSpinnerTick(spinner.TickMsg{ID: m.loading.spinner.ID()})
+				if rebuild {
+					m.updateViewportContent()
+				}
+			}
+		})
+	}
+}
