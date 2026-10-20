@@ -962,29 +962,31 @@ func TestAnthropicThinkingParamsForMiniMaxM27OmitsThinking(t *testing.T) {
 }
 
 func TestAnthropicThinkingParamsForMiniMaxM31(t *testing.T) {
-	for _, effort := range []string{"low", "medium", "high", "xhigh", "max"} {
-		thinking, outCfg, _ := anthropicThinkingParamsForModel(
-			providerconfig.Provider(config.ProviderMiniMax), "MiniMax-M3.1-Flash-Preview", effort,
-		)
-		body, err := json.Marshal(anthropic.MessageNewParams{
-			Thinking: thinking, OutputConfig: outCfg,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		var request struct {
-			Thinking struct {
-				Type string `json:"type"`
-			} `json:"thinking"`
-			OutputConfig struct {
-				Effort string `json:"effort"`
-			} `json:"output_config"`
-		}
-		if err := json.Unmarshal(body, &request); err != nil {
-			t.Fatal(err)
-		}
-		if request.Thinking.Type != "adaptive" || request.OutputConfig.Effort != effort {
-			t.Fatalf("effort %q: unexpected MiniMax M3.1 request: %s", effort, body)
+	for _, model := range []string{"MiniMax-M3.1-Flash", "MiniMax-M3.1-Flash-Preview"} {
+		for _, effort := range []string{"low", "medium", "high", "xhigh", "max"} {
+			thinking, outCfg, _ := anthropicThinkingParamsForModel(
+				providerconfig.Provider(config.ProviderMiniMax), model, effort,
+			)
+			body, err := json.Marshal(anthropic.MessageNewParams{
+				Thinking: thinking, OutputConfig: outCfg,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var request struct {
+				Thinking struct {
+					Type string `json:"type"`
+				} `json:"thinking"`
+				OutputConfig struct {
+					Effort string `json:"effort"`
+				} `json:"output_config"`
+			}
+			if err := json.Unmarshal(body, &request); err != nil {
+				t.Fatal(err)
+			}
+			if request.Thinking.Type != "adaptive" || request.OutputConfig.Effort != effort {
+				t.Fatalf("effort %q: unexpected MiniMax M3.1 request: %s", effort, body)
+			}
 		}
 	}
 }

@@ -88,6 +88,63 @@ func TestRegistry_GetModelContextWindow(t *testing.T) {
 	}
 }
 
+func TestCodexMaximumContextWindows(t *testing.T) {
+	reg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	for modelID, want := range map[string]int{
+		"gpt-6.1-sol":   872000,
+		"gpt-6-sol":     872000,
+		"gpt-6-luna":    872000,
+		"gpt-6-astra":   872000,
+		"gpt-5.6-sol":   872000,
+		"gpt-5.6-terra": 872000,
+		"gpt-5.6-luna":  872000,
+		"gpt-5.5":       272000,
+		"gpt-5.4":       272000,
+	} {
+		t.Run(modelID, func(t *testing.T) {
+			got, ok := reg.GetModelContextWindow("openai-codex", modelID)
+			if !ok {
+				t.Fatalf("expected to find openai-codex/%s", modelID)
+			}
+			if got != want {
+				t.Errorf("context window = %d, want %d", got, want)
+			}
+		})
+	}
+}
+
+func TestMiniMaxM31FlashModels(t *testing.T) {
+	reg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+	for _, tt := range []struct {
+		provider string
+		model    string
+	}{
+		{"minimax", "MiniMax-M3.1-Flash"},
+		{"opencode-go", "minimax-m3.1-flash-free"},
+	} {
+		t.Run(tt.provider, func(t *testing.T) {
+			model, ok := reg.GetModel(tt.provider, tt.model)
+			if !ok {
+				t.Fatalf("missing model %s/%s", tt.provider, tt.model)
+			}
+			if model.ContextWindow != 1000000 {
+				t.Errorf("context window = %d, want 1000000", model.ContextWindow)
+			}
+			want := []string{"low", "medium", "high", "xhigh", "max"}
+			if !slices.Equal(model.ThinkingEfforts, want) {
+				t.Errorf("thinking efforts = %v, want %v", model.ThinkingEfforts, want)
+			}
+		})
+	}
+}
+
 func TestModel_ThinkingEffortsLoadFromYAML(t *testing.T) {
 	reg, err := Load()
 	if err != nil {
@@ -150,8 +207,8 @@ func TestModel_ThinkingEffortsLoadFromYAML(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to find openai-codex/gpt-6-sol")
 	}
-	if codexSol.ContextWindow != 272000 {
-		t.Fatalf("expected openai-codex/gpt-6-sol context 272000, got %d", codexSol.ContextWindow)
+	if codexSol.ContextWindow != 872000 {
+		t.Fatalf("expected openai-codex/gpt-6-sol context 872000, got %d", codexSol.ContextWindow)
 	}
 	expectedCodexSol := []string{"low", "medium", "high", "xhigh", "max", "ultra"}
 	if !slices.Equal(codexSol.ThinkingEfforts, expectedCodexSol) {
@@ -162,8 +219,8 @@ func TestModel_ThinkingEffortsLoadFromYAML(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to find openai-codex/gpt-6-luna")
 	}
-	if codexLuna.ContextWindow != 272000 {
-		t.Fatalf("expected openai-codex/gpt-6-luna context 272000, got %d", codexLuna.ContextWindow)
+	if codexLuna.ContextWindow != 872000 {
+		t.Fatalf("expected openai-codex/gpt-6-luna context 872000, got %d", codexLuna.ContextWindow)
 	}
 	expectedCodexLuna := []string{"low", "medium", "high", "xhigh", "max"}
 	if !slices.Equal(codexLuna.ThinkingEfforts, expectedCodexLuna) {
@@ -186,8 +243,8 @@ func TestModel_ThinkingEffortsLoadFromYAML(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to find minimax provider")
 	}
-	if len(minimaxProvider.Models) != 4 {
-		t.Fatalf("expected 4 minimax models, got %d", len(minimaxProvider.Models))
+	if len(minimaxProvider.Models) != 5 {
+		t.Fatalf("expected 5 minimax models, got %d", len(minimaxProvider.Models))
 	}
 	minimaxM27, ok := reg.GetModel("minimax", "MiniMax-M2.7")
 	if !ok {
@@ -204,8 +261,8 @@ func TestModel_ThinkingEffortsLoadFromYAML(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to find opencode-go provider")
 	}
-	if len(opencode.Models) != 28 {
-		t.Fatalf("expected 28 opencode-go models, got %d", len(opencode.Models))
+	if len(opencode.Models) != 29 {
+		t.Fatalf("expected 29 opencode-go models, got %d", len(opencode.Models))
 	}
 
 	haiku, haikuOK := reg.GetModel("opencode-go", "claude-haiku-5-5")

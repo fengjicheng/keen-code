@@ -469,10 +469,12 @@ func TestNewClient_RegisteredModelsRequestParameters(t *testing.T) {
 		{config.ProviderBedrock, "global.anthropic.claude-fable-5-1", "bedrock", 1000000, standardEfforts},
 		{config.ProviderBedrock, "global.anthropic.claude-opus-5", "bedrock", 1000000, standardEfforts},
 		{config.ProviderOpenAI, "gpt-6.1-sol", "responses", 1050000, standardEfforts},
-		{config.ProviderOpenAICodex, "gpt-6.1-sol", "codex", 272000, []string{"", "low", "medium", "high", "xhigh", "max", "ultra"}},
+		{config.ProviderOpenAICodex, "gpt-6.1-sol", "codex", 872000, []string{"", "low", "medium", "high", "xhigh", "max", "ultra"}},
 		{config.ProviderZAI, "glm-5.3-flashx", "chat", 1000000, []string{"", "low", "high", "max"}},
 		{config.ProviderDeepSeek, "deepseek-flash", "chat", 1000000, []string{"", "low", "high", "max"}},
 		{config.ProviderMiniMax, "MiniMax-M3.1-Flash-Preview", "anthropic", 1000000, standardEfforts},
+		{config.ProviderMiniMax, "MiniMax-M3.1-Flash", "anthropic", 1000000, standardEfforts},
+		{config.ProviderOpenCodeGo, "minimax-m3.1-flash-free", "chat", 1000000, standardEfforts},
 	} {
 		t.Run(tt.provider+"/"+tt.model, func(t *testing.T) {
 			for _, effort := range tt.efforts {
@@ -595,7 +597,9 @@ func TestNewClient_RegisteredModelsRequestParameters(t *testing.T) {
 						case "responses", "codex":
 							want["reasoning"] = map[string]any{"effort": effort}
 						case "chat":
-							want["thinking"] = map[string]any{"type": "enabled"}
+							if tt.provider != config.ProviderOpenCodeGo {
+								want["thinking"] = map[string]any{"type": "enabled"}
+							}
 							want["reasoning_effort"] = effort
 						}
 					}
