@@ -306,6 +306,8 @@ func TestGuard_IsBlocked_Gitignore(t *testing.T) {
 
 func TestGuard_ResolvePath(t *testing.T) {
 	tmpDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
 	g := NewGuard(tmpDir, nil)
 
 	tests := []struct {
@@ -314,8 +316,11 @@ func TestGuard_ResolvePath(t *testing.T) {
 	}{
 		{"main.go", filepath.Join(tmpDir, "main.go")},
 		{"./main.go", filepath.Join(tmpDir, "main.go")},
+		{"../sibling.go", filepath.Join(filepath.Dir(tmpDir), "sibling.go")},
 		{"src/main.go", filepath.Join(tmpDir, "src", "main.go")},
 		{"/absolute/path", "/absolute/path"},
+		{"~", filepath.Clean(homeDir)},
+		{"~/notes.md", filepath.Join(homeDir, "notes.md")},
 	}
 
 	for _, tt := range tests {

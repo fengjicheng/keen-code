@@ -1,6 +1,7 @@
 package filesearch
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ const defaultRefreshInterval = 10 * time.Second
 
 type FileSearcher struct {
 	workingDir      string
+	guard           *filesystem.Guard
 	refreshInterval time.Duration
 	mu              sync.RWMutex
 	cache           []string
@@ -22,24 +24,34 @@ type FileSearcher struct {
 	updatedAt       time.Time
 }
 
-func NewFileSearcher(workingDir string, _ *filesystem.Guard) *FileSearcher {
+func NewFileSearcher(workingDir string, guard *filesystem.Guard) *FileSearcher {
 	return &FileSearcher{
 		workingDir:      workingDir,
+		guard:           guard,
 		refreshInterval: defaultRefreshInterval,
 	}
 }
 
-// Search returns up to limit relative paths whose names contain query as a substring.
-// Returns nil if query is empty.
-// The file list is cached on first call and refreshed on demand in the background.
+// Search returns up to limit paths matching query.
+// Path traversal queries (starting with /, ~/, ./, ../) list directory contents on demand.
+// Workspace queries search the cached git file list (with background refresh), falling back
+// to on-demand directory listing when workingDir has no git index.
 func (s *FileSearcher) Search(query string, limit int) []string {
-	if query == "" {
+	if query == "" || limit <= 0 {
 		return nil
+	}
+
+	if isPathTraversalQuery(query) {
+		return s.searchDirectory(query, limit)
 	}
 
 	s.ensureCache()
 	cache := s.snapshotCache()
 	s.refreshStaleCache()
+
+	if len(cache) == 0 {
+		return s.searchDirectory(query, limit)
+	}
 
 	query = strings.ToLower(query)
 	var results []string
@@ -52,6 +64,112 @@ func (s *FileSearcher) Search(query string, limit int) []string {
 		}
 	}
 	return results
+}
+
+func isPathTraversalQuery(query string) bool {
+	return query == "~" ||
+		query == "." ||
+		query == ".." ||
+		strings.HasPrefix(query, "/") ||
+		strings.HasPrefix(query, "~/") ||
+		strings.HasPrefix(query, "./") ||
+		strings.HasPrefix(query, "../")
+}
+
+func (s *FileSearcher) searchDirectory(query string, limit int) []string {
+	displayDir, resolvedDir, filePrefix, ok := s.resolveDirectoryQuery(query)
+	if !ok {
+		return nil
+	}
+
+	if s.guard != nil && s.guard.IsBlocked(resolvedDir) {
+		return nil
+	}
+
+	entries, err := os.ReadDir(resolvedDir)
+	if err != nil {
+		return nil
+	}
+
+	lowerPrefix := strings.ToLower(filePrefix)
+	includeHidden := strings.HasPrefix(filePrefix, ".")
+
+	var prefixMatches []string
+	var substringMatches []string
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") && !includeHidden {
+			continue
+		}
+
+		fullPath := filepath.Join(resolvedDir, name)
+		if s.guard != nil && s.guard.IsBlocked(fullPath) {
+			continue
+		}
+
+		lowerName := strings.ToLower(name)
+		isPrefix := lowerPrefix == "" || strings.HasPrefix(lowerName, lowerPrefix)
+		isSubstring := !isPrefix && strings.Contains(lowerName, lowerPrefix)
+		if !isPrefix && !isSubstring {
+			continue
+		}
+
+		candidate := displayDir + name
+		if isDirEntry(resolvedDir, entry) {
+			candidate += "/"
+		}
+
+		if isPrefix {
+			prefixMatches = append(prefixMatches, candidate)
+			if len(prefixMatches) >= limit {
+				return prefixMatches[:limit]
+			}
+		} else {
+			substringMatches = append(substringMatches, candidate)
+		}
+	}
+
+	results := append(prefixMatches, substringMatches...)
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results
+}
+
+func (s *FileSearcher) resolveDirectoryQuery(query string) (displayDir string, resolvedDir string, filePrefix string, ok bool) {
+	if query == "~" || query == "." || query == ".." || strings.HasSuffix(query, "/..") {
+		query += "/"
+	}
+
+	if lastSlash := strings.LastIndex(query, "/"); lastSlash >= 0 {
+		displayDir = query[:lastSlash+1]
+		filePrefix = query[lastSlash+1:]
+	} else {
+		filePrefix = query
+	}
+
+	targetDir := displayDir
+	if targetDir == "" {
+		targetDir = "."
+	}
+	resolved, err := filesystem.ResolvePath(s.workingDir, targetDir)
+	if err != nil {
+		return "", "", "", false
+	}
+
+	return displayDir, resolved, filePrefix, true
+}
+
+func isDirEntry(parentDir string, entry os.DirEntry) bool {
+	if entry.IsDir() {
+		return true
+	}
+	if entry.Type()&os.ModeSymlink != 0 {
+		info, err := os.Stat(filepath.Join(parentDir, entry.Name()))
+		return err == nil && info.IsDir()
+	}
+	return false
 }
 
 func (s *FileSearcher) ensureCache() {

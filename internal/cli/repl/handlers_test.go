@@ -1520,6 +1520,39 @@ func TestHandleFileModeSelectionReplacesToken(t *testing.T) {
 	}
 }
 
+func TestHandleFileModeSelectionDirectoryDrillsDown(t *testing.T) {
+	root := t.TempDir()
+	workDir := filepath.Join(root, "current")
+	siblingDir := filepath.Join(root, "sibling")
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(siblingDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(siblingDir, "target.go"), []byte("package sibling"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := newTestModel()
+	m.fileSearcher = replfilesearch.NewFileSearcher(workDir, nil)
+	m.textarea.SetValue("check @../")
+	m.textarea.SetCursorColumn(len("check @../"))
+	m.suggestion.RefreshFiles([]string{"../sibling/"})
+
+	updated, _ := m.handleFileModeSelection()
+
+	if got := updated.textarea.Value(); got != "check @../sibling/" {
+		t.Fatalf("textarea = %q, want %q", got, "check @../sibling/")
+	}
+	if !updated.suggestion.Visible() || !updated.suggestion.IsFileMode() {
+		t.Fatal("expected file suggestions to remain visible and drill into directory")
+	}
+	if cur := updated.suggestion.First(); cur == nil || cur.Name != "../sibling/target.go" {
+		t.Fatalf("first suggestion = %#v, want ../sibling/target.go", cur)
+	}
+}
+
 func TestHandleSuggestionNavigationAndSelection(t *testing.T) {
 	m := newTestModel()
 	m.suggestion.RefreshFiles([]string{"first.go", "second.go"})

@@ -117,14 +117,27 @@ func (g *Guard) IsBlocked(path string) bool {
 }
 
 func (g *Guard) ResolvePath(path string) (string, error) {
-	if filepath.IsAbs(path) {
-		cleaned := filepath.Clean(path)
-		return cleaned, nil
+	return ResolvePath(g.workingDir, path)
+}
+
+func ResolvePath(workingDir, path string) (string, error) {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return "", fmt.Errorf("failed to resolve home directory")
+		}
+		return filepath.Clean(filepath.Join(home, strings.TrimPrefix(path, "~"))), nil
 	}
 
-	resolved := filepath.Join(g.workingDir, path)
-	cleaned := filepath.Clean(resolved)
-	return cleaned, nil
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path), nil
+	}
+
+	if workingDir == "" {
+		return "", fmt.Errorf("working directory is empty")
+	}
+
+	return filepath.Clean(filepath.Join(workingDir, path)), nil
 }
 
 func (g *Guard) IsInKeenBashDir(path string) bool {

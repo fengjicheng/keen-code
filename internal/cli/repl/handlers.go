@@ -391,6 +391,18 @@ func extractAtToken(input string, cursorPos int) (token string, startIdx int, fo
 	return tok, atIdx, true
 }
 
+func (m *replModel) cursorByteOffset(input string) int {
+	cursorByte := 0
+	for i, ln := range strings.Split(input, "\n") {
+		if i == m.textarea.Line() {
+			cursorByte += m.textarea.Column()
+			break
+		}
+		cursorByte += len(ln) + 1
+	}
+	return cursorByte
+}
+
 func (m *replModel) handleFileModeSelection() (replModel, tea.Cmd) {
 	var item *replwidgets.SuggestionItem
 	if cur := m.suggestion.Current(); cur != nil {
@@ -398,25 +410,32 @@ func (m *replModel) handleFileModeSelection() (replModel, tea.Cmd) {
 	} else if first := m.suggestion.First(); first != nil {
 		item = first
 	}
+	isDir := false
+	var newVal string
 	if item != nil {
 		val := m.textarea.Value()
-		linesBefore := strings.Split(val, "\n")
-		cursorByte := 0
-		for i, ln := range linesBefore {
-			if i == m.textarea.Line() {
-				cursorByte += m.textarea.Column()
-				break
-			}
-			cursorByte += len(ln) + 1
-		}
+		cursorByte := m.cursorByteOffset(val)
 		if _, atIdx, found := extractAtToken(val, cursorByte); found {
-			replacement := "@" + item.Name + " "
-			newVal := val[:atIdx] + replacement + val[cursorByte:]
+			lineStart := cursorByte - m.textarea.Column()
+			isDir = strings.HasSuffix(item.Name, "/")
+			replacement := "@" + item.Name
+			if !isDir {
+				replacement += " "
+			}
+			newVal = val[:atIdx] + replacement + val[cursorByte:]
 			m.textarea.SetValue(newVal)
-			m.textarea.MoveToEnd()
+			if isDir && cursorByte < len(val) {
+				m.textarea.SetCursorColumn(atIdx - lineStart + len(replacement))
+			} else {
+				m.textarea.MoveToEnd()
+			}
 		}
 	}
-	m.suggestion.Hide()
+	if isDir {
+		m.refreshFileSuggestions(newVal)
+	} else {
+		m.suggestion.Hide()
+	}
 	m.adjustTextareaHeight()
 	return *m, nil
 }
@@ -802,16 +821,7 @@ func (m *replModel) refreshFileSuggestions(input string) bool {
 		m.suggestion.Hide()
 		return false
 	}
-	linesBefore := strings.Split(input, "\n")
-	cursorByte := 0
-	for i, ln := range linesBefore {
-		if i == m.textarea.Line() {
-			cursorByte += m.textarea.Column()
-			break
-		}
-		cursorByte += len(ln) + 1
-	}
-	if tok, _, found := extractAtToken(input, cursorByte); found {
+	if tok, _, found := extractAtToken(input, m.cursorByteOffset(input)); found {
 		paths := m.fileSearcher.Search(tok, 10)
 		m.suggestion.RefreshFiles(paths)
 		return true
