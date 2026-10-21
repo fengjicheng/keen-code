@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-10-21
+
+### Added
+
+- Support on-demand directory traversal (`/`, `~/`, `./`, `../`) and external file suggestions for `@` tokens in the REPL, with interactive directory drill-down and home-directory (`~`) path resolution.
+- Add `MiniMax-M3.1-Flash` to the MiniMax provider and `minimax-m3.1-flash-free` to the OpenCode Go provider.
+
+### Changed
+
+- Increase OpenAI Codex GPT-5.6, GPT-6, and GPT-6.1 model context windows to 872,000 tokens.
+
 ## [0.63.0] - 2026-10-19
 
 ### Added
@@ -1101,7 +1112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GoReleaser config for cross-platform binary distribution
 - npm wrapper package for installation via `npm install -g keen-code`
 
-[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.63.0...HEAD
+[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.64.0...HEAD
+[0.64.0]: https://github.com/mochow13/keen-code/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/mochow13/keen-code/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/mochow13/keen-code/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/mochow13/keen-code/compare/v0.60.0...v0.61.0
