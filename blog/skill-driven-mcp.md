@@ -6,23 +6,15 @@ date: 2026-10-21
 
 <p class="blog-post-date">October 21, 2026</p>
 
-Hello there good people! Today I want to share an architectural decision I made while building [Keen Code](https://github.com/mochow13/keen-code), my terminal-based coding agent written in Go.
+While building [Keen Code](https://github.com/mochow13/keen-code), my terminal-based coding agent written in Go, I chose to integrate MCP tools through its existing skills system.
 
-The topic is MCP integration.
-
-At first glance, integrating an MCP server looks straightforward. Connect to the server, fetch its tools, hand those tools to the language model, and let the model call them. Job done, right?
-
-Well, not quite.
-
-A single MCP server may expose dozens or even hundreds of tools. Each tool comes with a name, a description, and a JSON schema. Connect a few large servers, and suddenly the model receives thousands of tokens of tool definitions before the user has asked for anything.
+A basic MCP integration connects to a server, fetches its tools, and makes their definitions available to the language model. A server may expose dozens or hundreds of tools, each with a name, description, and JSON schema. Connecting several servers can add thousands of tokens of definitions to the model's initial context.
 
 I wanted to avoid loading those definitions eagerly. Keen Code already had a skills system, so I wondered: could MCP use the same discovery path?
 
 That led to a skill-driven approach. Instead of exposing every MCP tool directly to the model, Keen Code represents each MCP server as a generated **Agent Skill**. The model discovers the server through the skills catalogue, reads its tool list when needed, reads a selected schema, and invokes the remote tool through one generic dispatcher.
 
-In this article, I want to walk through that design as an alternative way to implement **progressive disclosure**: reveal enough information to make the next decision, rather than loading every detail upfront. This is not an argument that files are better than tool search. It is a look at where discovery can live, what this implementation makes straightforward, and what it still needs to handle.
-
-So without further ado, let's dive right in!
+This article describes that design and its trade-offs. It uses **progressive disclosure**: loading enough information for the next decision rather than every detail upfront.
 
 ## What problem was I trying to solve?
 
@@ -36,25 +28,19 @@ The simplest implementation would register 460 native tools with the language mo
 
 That creates a few practical problems:
 
-1. **The initial context becomes expensive.** The model receives hundreds of schemas even when the user only wants to rename a local Go function.
-2. **Tool selection becomes noisy.** The model must choose among many similarly named operations.
-3. **The tool surface changes dynamically.** Provider adapters need to handle a large and potentially changing list of definitions.
-4. **Discovery can become fragmented.** Keen already has skills; introducing another catalogue would add a second discovery experience unless I deliberately connected the two.
-5. **The architecture becomes provider-sensitive.** Not every model provider offers the same support for deferred or dynamically loaded tools.
+1. **Initial context usage.** The model receives hundreds of schemas even for tasks that do not need them.
+2. **Tool selection.** Many similarly named operations can make selection harder.
+3. **Changing tool definitions.** Provider adapters need to handle a potentially large and changing list.
+4. **Separate discovery paths.** Keen already has skills; a separate MCP catalogue would introduce another way to discover capabilities.
+5. **Provider differences.** Support for deferred or dynamically loaded tools varies between model providers.
 
-The popularity and usefulness of MCP cannot be denied. But attaching more tools should not make every unrelated coding request heavier.
-
-That led me to one core principle:
-
-> A tool schema should enter the model's working context only when the model has a reasonable chance of using that tool.
+The goal was to load a tool's schema when it becomes relevant to the task, rather than at the start of every conversation.
 
 ## Why did I model an MCP server as a skill?
 
 Keen Code already had a skills system. Skills were discoverable, selectively enabled, stored as ordinary files, and loaded on demand.
 
-An MCP server is also a collection of related capabilities. GitHub tools belong together. Observability tools belong together. Deployment tools belong together.
-
-So the mapping felt natural:
+An MCP server groups related capabilities, which makes it a reasonable unit for a skill:
 
 ```text
 One MCP server = one generated Agent Skill
@@ -91,60 +77,53 @@ Instead of loading everything at once, Keen progressively reveals detail.
 
 ## How does the architecture work?
 
-Let's separate preparation from what the model sees during a task. Solid arrows show the flow; dashed arrows show where generated information is loaded. This diagram follows a live invocation, omitting result-cache lookups.
+The diagrams separate preparation, discovery, and execution. Solid arrows show the flow; dashed arrows show where generated information is loaded. They follow a live invocation, omitting result-cache lookups.
+
+**Preparation · before discovery**
 
 ```mermaid
 flowchart TB
-    subgraph preparation["Preparation · before discovery"]
-        direction TB
-        M["Connect to configured MCP servers<br/>and fetch tool metadata"]
-        G["Generate one skill per server"]
-        C["Server summary<br/>in the skill catalogue"]
-        I["SKILL.md<br/>tool names + descriptions"]
-        S["schemas/tool.json<br/>one input schema per tool"]
-        M --> G
-        G --> C & I & S
-    end
+    M["Connect to configured MCP servers<br/>and fetch tool metadata"]
+    G["Generate one skill per server"]
+    C["Server summary<br/>in the skill catalogue"]
+    I["SKILL.md<br/>tool names + descriptions"]
+    S["schemas/tool.json<br/>one input schema per tool"]
+    M --> G
+    G --> C & I & S
+```
 
-    subgraph discovery["Progressive disclosure · model context grows as needed"]
-        direction TB
-        Q["User task"]
-        D1["1 · Select a server<br/>Which capability might help?"]
-        D2["2 · Read its tool index<br/>Which operation fits?"]
-        D3["3 · Read the selected schema<br/>What arguments does it need?"]
-        Q --> D1 --> D2 --> D3
-    end
+**Progressive disclosure · model context grows as needed**
 
-    subgraph execution["Execution · separate from discovery"]
-        direction TB
-        X["call_mcp_tool<br/>(server, tool, arguments)"]
-        P["Check target + required keys<br/>Consult permission system"]
-        R["Invoke remote MCP tool<br/>Return result to the model"]
-        X --> P --> R
-    end
-
+```mermaid
+flowchart TB
+    Q["User task"]
+    D1["1 · Select a server<br/>Which capability might help?"]
+    D2["2 · Read its tool index<br/>Which operation fits?"]
+    D3["3 · Read the selected schema<br/>What arguments does it need?"]
+    C["Server summary"]
+    I["SKILL.md"]
+    S["schemas/tool.json"]
+    Q --> D1 --> D2 --> D3
     C -.->|summary| D1
     I -.->|file read| D2
     S -.->|file read| D3
-    D3 --> X
-
-    classDef artifact fill:#eff6ff,stroke:#2563eb,color:#172554
-    classDef disclosure fill:#f0fdf4,stroke:#16a34a,color:#14532d
-    classDef runtime fill:#fff7ed,stroke:#ea580c,color:#7c2d12
-    class C,I,S artifact
-    class D1,D2,D3 disclosure
-    class X,P,R runtime
 ```
 
-Let's go through this carefully.
+**Execution · separate from discovery**
+
+```mermaid
+flowchart TB
+    X["call_mcp_tool<br/>(server, tool, arguments)"]
+    P["Check target + required keys<br/>Consult permission system"]
+    R["Invoke remote MCP tool<br/>Return result to the model"]
+    X --> P --> R
+```
 
 ### 1. Keen connects to configured MCP servers
 
 The user configures servers in `~/.keen/mcp/configs.json`. Keen starts its MCP manager, connects to each server, and requests the live tool list.
 
-At this point, Keen knows the name, description, and input schema of every exposed tool. But it does **not** register each one as a separate model-facing tool.
-
-That distinction is the foundation of the design.
+At this point, Keen knows the name, description, and input schema of every exposed tool, but does not register each one as a separate model-facing tool.
 
 ### 2. Keen generates an ordinary skill
 
@@ -166,7 +145,7 @@ Because these are ordinary skills, they participate in Keen's existing discovery
 
 One important distinction: disabling the skill hides its catalogue entry. It does **not** stop an already-running MCP session or prevent a model that knows the target from calling it. Discovery visibility is not execution authorisation.
 
-The integration does not create a parallel universe inside the agent. It extends an abstraction that already exists.
+This reuses the existing skill lifecycle rather than introducing a separate discovery mechanism.
 
 ### 3. The system prompt receives only a compact catalogue entry
 
@@ -247,13 +226,11 @@ For a live invocation, Keen validates the server and exact tool name, checks the
 
 Those checks are not full JSON Schema validation. Also, consulting the permission system does not mean displaying a new confirmation for every call: an existing session approval can satisfy it. We will return to both limitations below.
 
-No matter how many MCP tools are connected, the model-facing execution surface stays stable:
+The model-facing MCP execution interface remains the same as servers and tools are added:
 
 ```text
 call_mcp_tool(server, tool, arguments)
 ```
-
-Pretty simple, right?
 
 ## What does progressive disclosure look like here?
 
@@ -270,13 +247,11 @@ Each stage answers a different question:
 3. **How do I call it?** A separate JSON file contains the selected tool's input schema.
 4. **Can the operation run?** The dispatcher and runtime handle target checks, permissions, and execution.
 
-The first three stages are discovery. The fourth is execution. Keeping those concepts separate matters: reading a file is not an approval, and hiding a catalogue entry is not a security control.
-
-> Progressive disclosure organises what the model sees. Authorisation controls what the agent may do.
+The first three stages are discovery; the fourth is execution. Reading a file does not grant approval, and hiding a catalogue entry does not prevent execution.
 
 For a local refactoring task, most of this MCP information never needs to enter the model's context. For a task involving GitHub, the model has a path to the relevant details without receiving every other server's schemas first.
 
-That is the useful property. It does not require a claim that this is the cheapest discovery strategy for every workload.
+Whether this reduces overall cost depends on the workload.
 
 ## Why use files and skills for this?
 
@@ -292,7 +267,7 @@ call_mcp_tool(server, tool, arguments)
 
 They do not need to register each remote operation as a separate native tool. Discovery uses ordinary file reads, which Keen already supports.
 
-This keeps the mechanism independent of a particular provider's deferred-tool API. Provider adapters still need to support Keen's normal tool loop, of course. There is no magic portability switch hiding in `SKILL.md`.
+This avoids a dependency on a particular provider's deferred-tool API. Provider adapters still need to support Keen's normal tool loop.
 
 ### 2. MCP reuses the existing discovery experience
 
@@ -319,8 +294,6 @@ A schema explains an operation's input. A hand-written skill can explain a workf
 The current MCP generator writes tool metadata and calling instructions, not that domain-specific judgement. It also replaces the generated directory during regeneration. Manually editing the generated `SKILL.md` is therefore not a durable customisation mechanism.
 
 For now, I would keep workflow guidance in a separate hand-written skill. A future overlay or generator extension could connect the two more explicitly.
-
-This is a useful composition of skills and MCP, not a capability exclusive to Keen.
 
 ## How does this relate to tool search?
 
@@ -351,17 +324,15 @@ With native deferred definitions, selected tools become callable using their act
 
 Search can also find candidates without first choosing a server. Server-first discovery instead depends on useful catalogue descriptions and manageable server indexes. If a server exposes hundreds of overlapping tools, scanning its index can become awkward.
 
-There is no architectural rule that search must load five schemas while skill discovery loads one. The hosted Tool Search API documents a default of up to five results, with a configurable limit that can be one. Keen may also need to inspect multiple schemas before choosing an operation.
+The number of schemas loaded depends on the implementation and task. The hosted Tool Search API documents a default of up to five results, with a configurable limit that can be one. Keen may also need to inspect multiple schemas before choosing an operation.
 
-Nor are workflow guidance, inspectability, or centralised permissions exclusive to either approach. Claude Code supports skills and MCP server instructions. An agent exposing native tool definitions can still route every invocation through a common permission and execution layer.
+Both approaches can support workflow guidance, inspectability, and centralised permissions. Claude Code supports skills and MCP server instructions, and native tool invocations can also pass through a common permission and execution layer.
 
-The distinction I care about is narrower: **Keen implements discovery through its existing skill and filesystem abstractions, without requiring provider-native deferred-schema support.**
+Keen's implementation uses its existing skill and filesystem abstractions for discovery, without requiring provider-native deferred-schema support.
 
 ## What are the costs of server-first discovery?
 
-The most obvious cost is extra agent-loop work. A first invocation commonly involves reading a skill, reading a schema, and then dispatching the call. More reads can mean more latency and more opportunities for the model to take a wrong turn.
-
-Those reads provide an inspectable trace. They are not additional safety gates. A deployment is not safer simply because its schema arrived through two file reads rather than one search result.
+A first invocation commonly involves reading a skill, reading a schema, and then dispatching the call. These additional steps can increase latency and create more opportunities for selection or argument errors. The reads provide a trace of discovery, but are not additional safety checks.
 
 There are a few other costs worth making explicit:
 
@@ -370,13 +341,11 @@ There are a few other costs worth making explicit:
 3. **Text schemas require careful argument construction.** The provider sees a generic dispatcher contract, not the selected operation's full native schema.
 4. **Discovery context may need to be read again.** Repeated reads have a cost, and their usefulness depends on what history the agent retains and what files have actually been refreshed.
 
-So I would not claim a token or latency win without measurements. A useful evaluation would include the catalogue entry, index reads, schema reads, tool-result envelopes, model round trips, caching, and repeated use across turns—not just the size of one schema.
-
-Small, clearly grouped servers and a single enormous server are very different workloads. Architecture is annoyingly contextual like that.
+Token and latency comparisons would need measurements covering catalogue entries, index and schema reads, tool-result envelopes, model round trips, caching, and repeated use across turns. Results would also depend on whether tools are spread across small, clearly grouped servers or concentrated in one large server.
 
 ## Could this approach grow into a hybrid?
 
-Absolutely. Filesystem-backed discovery and ranked retrieval do not have to compete.
+Filesystem-backed discovery could also be combined with ranked retrieval.
 
 A future version could:
 
@@ -391,19 +360,9 @@ That would retain the existing skill entry point while adding another way to nav
 
 ## Concluding remarks
 
-Building MCP support for Keen Code made me separate two questions: how does an agent connect to a capability, and how does the model learn enough to use it?
+Keen Code uses generated skills to make MCP tools available on demand. The model starts with a compact server entry, reads the tool index and selected schema when needed, and invokes the operation through a generic dispatcher.
 
-Keen's current answer to the second question is skill-driven progressive disclosure. Start with a compact server entry. Read its tool index when relevant. Read a selected schema. Invoke the operation through a stable dispatcher.
-
-This is an alternative to search-led discovery, not an argument against it. Native deferred tools, client-side retrieval, generated skill files, and hand-written workflow guidance can all be parts of the same system.
-
-The lesson I am taking from this is simple:
-
-> Progressive disclosure is a design space, not a single tool-loading feature.
-
-For Keen, reusing skills was a practical starting point. It kept discovery close to an abstraction the agent already understood, while leaving room to add other ways of navigating tools as the catalogue grows.
-
-Hope you had fun reading. If you are building an agent, I would love to hear where you put the boundary between discovering a capability and executing it.
+Reusing skills kept discovery within an existing part of the agent. The trade-offs include additional file reads, server-first selection, and constructing arguments from schemas presented as text rather than native tool definitions. Search or provider-native deferred tools could complement this approach as the catalogue grows.
 
 ## References
 
