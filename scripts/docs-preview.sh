@@ -15,9 +15,11 @@ mkdir -p _docs
 cp README.md TOUR.md ROADMAP.md CHANGELOG.md CONTRIBUTING.md AGENTS.md index.md _docs/
 cp _docs/README.md _docs/about.md
 cp -r docs _docs/
+cp -r blog _docs/
 cp -r .ai-interactions _docs/ai-interactions
 cp -r assets _docs/
 cp .github/pages/extra.css _docs/
+cp .github/pages/extra.js _docs/
 sed -i '' 's/<div align="center">/<div align="center" markdown="1">/g' _docs/about.md
 sed -i '' 's/\.ai-interactions\//ai-interactions\//g' _docs/about.md _docs/TOUR.md
 

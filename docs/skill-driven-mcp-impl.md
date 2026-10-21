@@ -1,4 +1,4 @@
-# MCP Servers Driven by Skills
+# Skill-Driven MCP Servers - Implementation Details
 
 Keen integrates MCP servers through the existing Skills system. Connected MCP servers generate ordinary skill directories under `~/.keen/skills`, and the LLM uses those skill files to discover MCP tools before calling the shared `call_mcp_tool` tool.
 
