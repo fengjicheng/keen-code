@@ -23,7 +23,24 @@ var newMCPManager = func(opts ...keenmcp.Option) (keenmcp.Runtime, error) {
 	return keenmcp.NewManager(opts...)
 }
 
-func NewRootCommand(version string) *cobra.Command {
+type rootOptions struct {
+	preRunE func(*cobra.Command, []string) error
+}
+
+type RootOption func(*rootOptions)
+
+// WithPreRunE runs hook after the root command validates its persistent flags.
+func WithPreRunE(hook func(*cobra.Command, []string) error) RootOption {
+	return func(options *rootOptions) {
+		options.preRunE = hook
+	}
+}
+
+func NewRootCommand(version string, optionFns ...RootOption) *cobra.Command {
+	var options rootOptions
+	for _, optionFn := range optionFns {
+		optionFn(&options)
+	}
 	var resumeSessionID string
 	var configPath string
 	var mcpConfigPath string
@@ -80,6 +97,9 @@ func NewRootCommand(version string) *cobra.Command {
 		}
 		if cmd.Flags().Changed("mcp-config") && mcpConfigPath == "" {
 			return fmt.Errorf("--mcp-config requires a non-empty file path")
+		}
+		if options.preRunE != nil {
+			return options.preRunE(cmd, args)
 		}
 		return nil
 	}

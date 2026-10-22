@@ -33,9 +33,8 @@ func run() int {
 
 	slog.Debug("Logging initialized", "file", logFile)
 
-	rootCmd := clicmd.NewRootCommand(version)
 	var reporter *telemetry.Reporter
-	rootCmd.PersistentPreRun = func(command *cobra.Command, _ []string) {
+	rootCmd := clicmd.NewRootCommand(version, clicmd.WithPreRunE(func(command *cobra.Command, _ []string) error {
 		mode := "interactive"
 		if command.Name() == "run" {
 			mode = "headless"
@@ -46,7 +45,8 @@ func run() int {
 			Version:       version,
 			Mode:          mode,
 		})
-	}
+		return nil
+	}))
 	defer func() {
 		reporter.Close()
 	}()

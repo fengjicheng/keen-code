@@ -10,6 +10,7 @@ import (
 
 	"github.com/mochow13/keen-code/internal/config"
 	keenmcp "github.com/mochow13/keen-code/internal/mcp"
+	"github.com/spf13/cobra"
 )
 
 func TestNewRootCommand(t *testing.T) {
@@ -29,6 +30,32 @@ func TestNewRootCommand(t *testing.T) {
 
 	if cmd.Long == "" {
 		t.Error("command Long should not be empty")
+	}
+}
+
+func TestNewRootCommand_WithPreRunE(t *testing.T) {
+	called := false
+	cmd := NewRootCommand("test", WithPreRunE(func(got *cobra.Command, args []string) error {
+		called = got.Name() == "keen" && args == nil
+		return nil
+	}))
+
+	if err := cmd.PersistentPreRunE(cmd, nil); err != nil {
+		t.Fatalf("PersistentPreRunE() error = %v", err)
+	}
+	if !called {
+		t.Fatal("expected pre-run hook to be called")
+	}
+}
+
+func TestNewRootCommand_WithPreRunEPropagatesValidationError(t *testing.T) {
+	want := errors.New("pre-run failed")
+	cmd := NewRootCommand("test", WithPreRunE(func(*cobra.Command, []string) error {
+		return want
+	}))
+
+	if err := cmd.PersistentPreRunE(cmd, nil); !errors.Is(err, want) {
+		t.Fatalf("PersistentPreRunE() error = %v, want %v", err, want)
 	}
 }
 

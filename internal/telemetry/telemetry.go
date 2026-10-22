@@ -48,6 +48,7 @@ type payload struct {
 
 func New(cfg Config) *Reporter {
 	if !Enabled(cfg.MeasurementID, cfg.APISecret) {
+		slog.Debug("telemetry disabled", "measurement_id_present", cfg.MeasurementID != "", "api_secret_present", cfg.APISecret != "")
 		return nil
 	}
 	clientID, err := loadOrCreateClientID()
@@ -63,6 +64,7 @@ func New(cfg Config) *Reporter {
 		startedAt: now,
 		sessionID: strconv.FormatInt(now.UnixMilli(), 10),
 	}
+	slog.Debug("telemetry session start queued", "event", eventSessionStart, "session_id", r.sessionID)
 	go r.emit(r.newEvent(eventSessionStart, map[string]any{"engagement_time_msec": 1}))
 	return r
 }
@@ -104,8 +106,10 @@ func (r *Reporter) emit(item event) {
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 	if err := r.send(ctx, item); err != nil {
-		slog.Debug("telemetry delivery failed")
+		slog.Debug("telemetry delivery failed", "event", item.Name, "error", err)
+		return
 	}
+	slog.Debug("telemetry delivered", "event", item.Name)
 }
 
 func (r *Reporter) send(ctx context.Context, item event) error {
