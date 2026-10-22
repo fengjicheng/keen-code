@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.64.1] - 2026-10-23
+
+### Added
+
+- Add a blog section and improve the MCP documentation presentation.
+
+### Fixed
+
+- Restore Google Analytics session start and end telemetry after command validation.
+- Update the Go toolchain to include certificate-security fixes.
+- Improve MCP article readability and diagram rendering.
+
+
 ## [0.64.0] - 2026-10-21
 
 ### Added
@@ -1112,7 +1125,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GoReleaser config for cross-platform binary distribution
 - npm wrapper package for installation via `npm install -g keen-code`
 
-[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.64.0...HEAD
+[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.64.1...HEAD
+[0.64.1]: https://github.com/mochow13/keen-code/compare/v0.64.0...v0.64.1
 [0.64.0]: https://github.com/mochow13/keen-code/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/mochow13/keen-code/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/mochow13/keen-code/compare/v0.61.0...v0.62.0
