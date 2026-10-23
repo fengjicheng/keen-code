@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.64.2] - 2026-10-23
+
 ### Changed
 - Rename the OpenCode Go `minimax-m3.1-flash-free` model to `minimax-m3.1-flash` to match the upstream OpenCode Zen model ID.
 
 ### Removed
 - Remove the retired `MiniMax-M3.1-Flash-Preview` model from the MiniMax provider.
+
 
 ## [0.64.1] - 2026-10-23
 
@@ -1131,7 +1134,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GoReleaser config for cross-platform binary distribution
 - npm wrapper package for installation via `npm install -g keen-code`
 
-[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.64.1...HEAD
+[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.64.2...HEAD
+[0.64.2]: https://github.com/mochow13/keen-code/compare/v0.64.1...v0.64.2
 [0.64.1]: https://github.com/mochow13/keen-code/compare/v0.64.0...v0.64.1
 [0.64.0]: https://github.com/mochow13/keen-code/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/mochow13/keen-code/compare/v0.62.0...v0.63.0

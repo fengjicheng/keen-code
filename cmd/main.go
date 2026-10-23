@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "0.64.1"
+const version = "0.64.2"
 
 var (
 	telemetryMeasurementID string
