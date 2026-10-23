@@ -127,7 +127,7 @@ func TestMiniMaxM31FlashModels(t *testing.T) {
 		model    string
 	}{
 		{"minimax", "MiniMax-M3.1-Flash"},
-		{"opencode-go", "minimax-m3.1-flash-free"},
+		{"opencode-go", "minimax-m3.1-flash"},
 	} {
 		t.Run(tt.provider, func(t *testing.T) {
 			model, ok := reg.GetModel(tt.provider, tt.model)
@@ -243,8 +243,8 @@ func TestModel_ThinkingEffortsLoadFromYAML(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to find minimax provider")
 	}
-	if len(minimaxProvider.Models) != 5 {
-		t.Fatalf("expected 5 minimax models, got %d", len(minimaxProvider.Models))
+	if len(minimaxProvider.Models) != 4 {
+		t.Fatalf("expected 4 minimax models, got %d", len(minimaxProvider.Models))
 	}
 	minimaxM27, ok := reg.GetModel("minimax", "MiniMax-M2.7")
 	if !ok {

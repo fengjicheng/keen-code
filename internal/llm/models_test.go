@@ -472,9 +472,8 @@ func TestNewClient_RegisteredModelsRequestParameters(t *testing.T) {
 		{config.ProviderOpenAICodex, "gpt-6.1-sol", "codex", 872000, []string{"", "low", "medium", "high", "xhigh", "max", "ultra"}},
 		{config.ProviderZAI, "glm-5.3-flashx", "chat", 1000000, []string{"", "low", "high", "max"}},
 		{config.ProviderDeepSeek, "deepseek-flash", "chat", 1000000, []string{"", "low", "high", "max"}},
-		{config.ProviderMiniMax, "MiniMax-M3.1-Flash-Preview", "anthropic", 1000000, standardEfforts},
 		{config.ProviderMiniMax, "MiniMax-M3.1-Flash", "anthropic", 1000000, standardEfforts},
-		{config.ProviderOpenCodeGo, "minimax-m3.1-flash-free", "chat", 1000000, standardEfforts},
+		{config.ProviderOpenCodeGo, "minimax-m3.1-flash", "chat", 1000000, standardEfforts},
 	} {
 		t.Run(tt.provider+"/"+tt.model, func(t *testing.T) {
 			for _, effort := range tt.efforts {

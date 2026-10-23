@@ -168,7 +168,7 @@ func isOpenCodeGoMiniMaxModel(model string) bool {
 }
 
 func isOpenCodeGoAnthropicModel(model string) bool {
-	return (isOpenCodeGoMiniMaxModel(model) && model != "minimax-m3.1-flash-free") || isOpenCodeGoQwenModel(model) || strings.HasPrefix(model, "claude-")
+	return (isOpenCodeGoMiniMaxModel(model) && model != "minimax-m3.1-flash") || isOpenCodeGoQwenModel(model) || strings.HasPrefix(model, "claude-")
 }
 
 func isOpenCodeGoDeepSeekModel(model string) bool {
@@ -196,7 +196,7 @@ func isOpenCodeGoReasoningEffortModel(model string) bool {
 		model == "glm-5.2" || model == "glm-5.3" || model == "glm-5.3-flash" ||
 		model == "kimi-k3" ||
 		model == "hy3" || model == "hy4-preview" ||
-		model == "minimax-m3.1-flash-free"
+		model == "minimax-m3.1-flash"
 }
 
 func isOpenCodeGoResponsesModel(model string) bool {

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Rename the OpenCode Go `minimax-m3.1-flash-free` model to `minimax-m3.1-flash` to match the upstream OpenCode Zen model ID.
+
+### Removed
+- Remove the retired `MiniMax-M3.1-Flash-Preview` model from the MiniMax provider.
+
 ## [0.64.1] - 2026-10-23
 
 ### Added

@@ -671,7 +671,7 @@ func TestAnthropicClient_StreamChat_PreservesThinkingBlocksForToolContinuation(t
 }
 
 func TestAnthropicClient_NewModels_ThinkingToolLoop(t *testing.T) {
-	for _, model := range []string{"claude-sonnet-5-5", "MiniMax-M3.1-Flash-Preview"} {
+	for _, model := range []string{"claude-sonnet-5-5", "MiniMax-M3.1-Flash"} {
 		for _, thinking := range []string{"need a tool", ""} {
 			t.Run(model+"/thinking="+thinking, func(t *testing.T) {
 				testAnthropicThinkingToolLoop(t, model, thinking)
@@ -962,7 +962,7 @@ func TestAnthropicThinkingParamsForMiniMaxM27OmitsThinking(t *testing.T) {
 }
 
 func TestAnthropicThinkingParamsForMiniMaxM31(t *testing.T) {
-	for _, model := range []string{"MiniMax-M3.1-Flash", "MiniMax-M3.1-Flash-Preview"} {
+	for _, model := range []string{"MiniMax-M3.1-Flash"} {
 		for _, effort := range []string{"low", "medium", "high", "xhigh", "max"} {
 			thinking, outCfg, _ := anthropicThinkingParamsForModel(
 				providerconfig.Provider(config.ProviderMiniMax), model, effort,

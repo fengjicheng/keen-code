@@ -577,7 +577,7 @@ func anthropicThinkingParams(effort string) (anthropic.ThinkingConfigParamUnion,
 
 func anthropicThinkingParamsForModel(provider providerconfig.Provider, model, effort string) (anthropic.ThinkingConfigParamUnion, anthropic.OutputConfigParam, int64) {
 	if provider == providerconfig.Provider(config.ProviderMiniMax) {
-		if model == "MiniMax-M3" || model == "MiniMax-M3.1-Flash" || model == "MiniMax-M3.1-Flash-Preview" {
+		if model == "MiniMax-M3" || model == "MiniMax-M3.1-Flash" {
 			return anthropicThinkingParams(effort)
 		}
 		return anthropic.ThinkingConfigParamUnion{}, anthropic.OutputConfigParam{}, anthropicMaxTokens
