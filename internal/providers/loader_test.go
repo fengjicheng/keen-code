@@ -261,8 +261,8 @@ func TestModel_ThinkingEffortsLoadFromYAML(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to find opencode-go provider")
 	}
-	if len(opencode.Models) != 29 {
-		t.Fatalf("expected 29 opencode-go models, got %d", len(opencode.Models))
+	if len(opencode.Models) != 31 {
+		t.Fatalf("expected 31 opencode-go models, got %d", len(opencode.Models))
 	}
 
 	haiku, haikuOK := reg.GetModel("opencode-go", "claude-haiku-5-5")
@@ -424,6 +424,37 @@ func TestResolveThinkingEffort(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Fatalf("ResolveThinkingEffort() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGeminiAndKimiK31ProModels(t *testing.T) {
+	reg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+	for _, tt := range []struct {
+		provider string
+		model    string
+		context  int
+		efforts  []string
+	}{
+		{"googleai", "gemini-4-argon", 1048576, []string{"low", "medium", "high"}},
+		{"opencode-go", "gemini-4-argon", 1048576, []string{"low", "medium", "high"}},
+		{"moonshotai", "kimi-k3.1-pro", 1048576, []string{"low", "high", "max"}},
+		{"opencode-go", "kimi-k3.1-pro", 1048576, []string{"low", "high", "max"}},
+	} {
+		t.Run(tt.provider+"/"+tt.model, func(t *testing.T) {
+			model, ok := reg.GetModel(tt.provider, tt.model)
+			if !ok {
+				t.Fatalf("missing model %s/%s", tt.provider, tt.model)
+			}
+			if model.ContextWindow != tt.context {
+				t.Errorf("context window = %d, want %d", model.ContextWindow, tt.context)
+			}
+			if !slices.Equal(model.ThinkingEfforts, tt.efforts) {
+				t.Errorf("thinking efforts = %v, want %v", model.ThinkingEfforts, tt.efforts)
 			}
 		})
 	}

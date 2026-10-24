@@ -9,13 +9,13 @@ Keen Code supports multiple AI providers through a plugin-like architecture. The
 | Anthropic | `anthropic` | API Key | Claude Fable 5.1, Opus 5, Fable 5, Sonnet 5, Opus 4.8, Sonnet 4.6, Haiku 4.5 |
 | OpenAI | `openai` | API Key | GPT-5.6 Sol, GPT-5.6 Luna, GPT-5.6 Terra, GPT-5.5, GPT-5.4 |
 | Codex | `openai-codex` | OAuth | GPT-5.6 Sol, GPT-5.6 Terra, GPT-5.6 Luna, GPT-5.5, GPT-5.4 |
-| Google AI | `googleai` | API Key | Gemini 3.1 Pro, 3.6 Flash, 3.5 Flash, 3.5 Flash-Lite |
-| Moonshot AI | `moonshotai` | API Key | Kimi K3, K2.7 Code, K2.7 Code High-Speed, K2.6, K2.5 |
+| Google AI | `googleai` | API Key | Gemini 4 Argon, Gemini 3.8 Flash, Gemini 3.7 Flash, Gemini 3.6 Flash, Gemini 3.5 Flash-Lite, Gemini 3.1 Pro |
+| Moonshot AI | `moonshotai` | API Key | Kimi K3.1 Pro, Kimi K3, K2.7 Code, K2.7 Code High-Speed, K2.6, K2.5 |
 | Z.ai | `zai` | API Key | GLM-5.3 Flash, GLM-5.3, GLM-5.2, GLM-5.1 |
 | DeepSeek | `deepseek` | API Key | DeepSeek V4 Flash, V4 Pro |
 | MiniMax | `minimax` | API Key | MiniMax M3, M2.7, M2.7 High-Speed |
 | Amazon Bedrock | `amazon-bedrock` | AWS credentials | Claude Fable 5, Sonnet 5, Opus 4.8, Opus 4.6, Sonnet 4.6, Haiku 4.5 |
-| OpenCode Go | `opencode-go` | API Key | Grok 4.6, Grok 4.5, GPT-5.6 Luna, GLM-5.3 Flash, GLM-5.3, GLM-5.2, GLM-5.1, Kimi K3, Kimi K2.7 Code, Kimi K2.6, LongCat-2.0, MiMo V2.5 Pro, MiMo V2.5, Muse Spark 1.3 Contributor, Muse Spark 1.2 Contributor, Qwen3.8 Flash, Qwen3.8 Max, Qwen3.7 Plus, Qwen3.6 Plus, MiniMax M3, MiniMax M2.7, DeepSeek V4 Pro, DeepSeek V4 Flash, Hy4 preview, Hy3 |
+| OpenCode Go | `opencode-go` | API Key | Gemini 4 Argon, Kimi K3.1 Pro, Grok 4.6, Grok 4.5, GPT-5.6 Luna, GLM-5.3 Flash, GLM-5.3, GLM-5.2, GLM-5.1, Kimi K3, Kimi K2.7 Code, Kimi K2.6, LongCat-2.0, MiMo V2.5 Pro, MiMo V2.5, Muse Spark 1.3 Contributor, Muse Spark 1.2 Contributor, Qwen3.8 Flash, Qwen3.8 Max, Qwen3.7 Plus, Qwen3.6 Plus, MiniMax M3, MiniMax M2.7, DeepSeek V4 Pro, DeepSeek V4 Flash, Hy4 preview, Hy3 |
 | Yolo-Auto | `yolo-auto` | API Key | `yolo`, `yolo-small` (catalog discoverable at `/v1/models`) |
 | OpenAI Compatible | `openai-compatible` | API Key | Any OpenAI-compatible model |
 

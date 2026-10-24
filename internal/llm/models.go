@@ -11,12 +11,13 @@ import (
 )
 
 const (
-	deepSeekBaseURL   = "https://api.deepseek.com/"
-	moonshotAIBaseURL = "https://api.moonshot.ai/v1/"
-	zaiBaseURL        = "https://api.z.ai/api/paas/v4/"
-	miniMaxBaseURL    = "https://api.minimax.io/anthropic"
-	openCodeGoBaseURL = "https://opencode.ai/zen/go"
-	yoloAutoBaseURL   = "https://yolo-auto.com/v1/"
+	deepSeekBaseURL         = "https://api.deepseek.com/"
+	moonshotAIBaseURL       = "https://api.moonshot.ai/v1/"
+	zaiBaseURL              = "https://api.z.ai/api/paas/v4/"
+	miniMaxBaseURL          = "https://api.minimax.io/anthropic"
+	openCodeGoBaseURL       = "https://opencode.ai/zen/go"
+	openCodeGoGoogleBaseURL = "https://opencode.ai/inference/go/google/"
+	yoloAutoBaseURL         = "https://yolo-auto.com/v1/"
 )
 
 func NewClient(cfg *config.ResolvedConfig) (LLMClient, error) {
@@ -111,6 +112,21 @@ func NewClient(cfg *config.ResolvedConfig) (LLMClient, error) {
 			Headers:             cfg.Headers,
 		})
 	case config.ProviderOpenCodeGo:
+		if isOpenCodeGoGeminiModel(cfg.Model) {
+			baseURL := cfg.BaseURL
+			if baseURL == "" {
+				baseURL = openCodeGoGoogleBaseURL
+			}
+			return NewGenkitClient(&providerconfig.ClientConfig{
+				Provider:            providerconfig.Provider(cfg.Provider),
+				APIKey:              cfg.APIKey,
+				Model:               cfg.Model,
+				ThinkingEffort:      cfg.ThinkingEffort,
+				BaseURL:             baseURL,
+				ContextWindowTokens: contextWindowTokenCount,
+				Headers:             cfg.Headers,
+			})
+		}
 		if isOpenCodeGoResponsesModel(cfg.Model) {
 			baseURL := cfg.BaseURL
 			if baseURL == "" {
@@ -183,6 +199,10 @@ func isOpenCodeGoLongCatModel(model string) bool {
 	return strings.HasPrefix(model, "longcat-")
 }
 
+func isOpenCodeGoGeminiModel(model string) bool {
+	return strings.HasPrefix(model, "gemini-")
+}
+
 func isOpenCodeGoKimiModel(model string) bool {
 	return strings.HasPrefix(model, "kimi-")
 }
@@ -194,7 +214,7 @@ func isOpenCodeGoQwenModel(model string) bool {
 func isOpenCodeGoReasoningEffortModel(model string) bool {
 	return model == "grok-4.5" ||
 		model == "glm-5.2" || model == "glm-5.3" || model == "glm-5.3-flash" ||
-		model == "kimi-k3" ||
+		model == "kimi-k3" || model == "kimi-k3.1-pro" ||
 		model == "hy3" || model == "hy4-preview" ||
 		model == "minimax-m3.1-flash"
 }

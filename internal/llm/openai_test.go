@@ -725,7 +725,7 @@ func TestOpenAICompatibleClient_OpenCodeGoLongCatThinkingDisabled(t *testing.T) 
 }
 
 func TestOpenAICompatibleClient_OpenCodeGoReasoningEffortModels(t *testing.T) {
-	for _, model := range []string{"grok-4.5", "glm-5.2", "glm-5.3", "glm-5.3-flash", "kimi-k3", "hy3", "hy4-preview"} {
+	for _, model := range []string{"grok-4.5", "glm-5.2", "glm-5.3", "glm-5.3-flash", "kimi-k3", "kimi-k3.1-pro", "hy3", "hy4-preview"} {
 		t.Run(model, func(t *testing.T) {
 			params := (&OpenAICompatibleClient{
 				provider:       providerconfig.Provider(config.ProviderOpenCodeGo),
@@ -1552,5 +1552,19 @@ func TestLogOpenAIMessageOrder(t *testing.T) {
 	logOpenAIMessageOrder(messages)
 	if !strings.Contains(logs.String(), "OpenAI message order:") || !strings.Contains(logs.String(), "test prompt") {
 		t.Fatalf("missing debug message dump: %s", logs.String())
+	}
+}
+
+func TestOpenAICompatibleClient_MoonshotKimiK31ProReasoningEffort(t *testing.T) {
+	params := (&OpenAICompatibleClient{
+		provider:       providerconfig.Provider(config.ProviderMoonshotAI),
+		model:          "kimi-k3.1-pro",
+		thinkingEffort: "low",
+	}).buildChatParams(nil, nil)
+	if params.ReasoningEffort != shared.ReasoningEffort("low") {
+		t.Fatalf("expected Kimi K3.1 Pro reasoning_effort low, got %q", params.ReasoningEffort)
+	}
+	if extra := params.ExtraFields(); extra != nil {
+		t.Fatalf("expected no additional thinking fields, got %#v", extra)
 	}
 }

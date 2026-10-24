@@ -346,12 +346,12 @@ func TestGenkitClient_executeTools_Success(t *testing.T) {
 		t.Fatalf("failed to register tool: %v", err)
 	}
 
-	toolRequests := []*ai.ToolRequest{
-		{
+	toolRequests := []*ai.Part{
+		ai.NewToolRequestPart(&ai.ToolRequest{
 			Name:  "success_tool",
 			Input: map[string]any{"message": "hello"},
 			Ref:   "ref-success",
-		},
+		}),
 	}
 
 	eventCh := make(chan core.StreamEvent, 4)
@@ -526,12 +526,12 @@ func TestGenkitClient_executeTools_Error(t *testing.T) {
 		t.Fatalf("failed to register tool: %v", err)
 	}
 
-	toolRequests := []*ai.ToolRequest{
-		{
+	toolRequests := []*ai.Part{
+		ai.NewToolRequestPart(&ai.ToolRequest{
 			Name:  "failing_tool",
 			Input: map[string]any{"message": "hello"},
 			Ref:   "ref-error",
-		},
+		}),
 	}
 
 	eventCh := make(chan core.StreamEvent, 4)
@@ -903,7 +903,7 @@ func TestGenkitClient_PendingState_ClearedOnSuccess(t *testing.T) {
 }
 
 func TestBuildGenkitGenerateConfig_CustomHeaders(t *testing.T) {
-	cfg := buildGenkitGenerateConfig("", providerconfig.Provider(config.ProviderGoogleAI), map[string]string{
+	cfg := buildGenkitGenerateConfig("", providerconfig.Provider(config.ProviderGoogleAI), "", map[string]string{
 		"x-custom-header": "custom-value",
 		"x-another":       "another-value",
 	})
@@ -922,7 +922,7 @@ func TestBuildGenkitGenerateConfig_CustomHeaders(t *testing.T) {
 }
 
 func TestBuildGenkitGenerateConfig_HeadersWithThinking(t *testing.T) {
-	cfg := buildGenkitGenerateConfig("low", providerconfig.Provider(config.ProviderGoogleAI), map[string]string{
+	cfg := buildGenkitGenerateConfig("low", providerconfig.Provider(config.ProviderGoogleAI), "", map[string]string{
 		"x-custom-header": "custom-value",
 	})
 	if cfg == nil {
@@ -940,7 +940,7 @@ func TestBuildGenkitGenerateConfig_HeadersWithThinking(t *testing.T) {
 }
 
 func TestBuildGenkitGenerateConfig_NoHeaders(t *testing.T) {
-	cfg := buildGenkitGenerateConfig("", providerconfig.Provider(config.ProviderGoogleAI), nil)
+	cfg := buildGenkitGenerateConfig("", providerconfig.Provider(config.ProviderGoogleAI), "", nil)
 	if cfg != nil {
 		t.Fatalf("expected nil config without thinking or headers, got %+v", cfg)
 	}
@@ -975,7 +975,7 @@ func TestGenkitGenerateConfig_CustomHeadersReachWire(t *testing.T) {
 		t.Fatalf("failed to create genai client: %v", err)
 	}
 
-	cfg := buildGenkitGenerateConfig("", providerconfig.Provider(config.ProviderGoogleAI), map[string]string{
+	cfg := buildGenkitGenerateConfig("", providerconfig.Provider(config.ProviderGoogleAI), "", map[string]string{
 		"x-custom-header": "custom-value",
 		"x-another":       "another-value",
 	})
@@ -990,5 +990,157 @@ func TestGenkitGenerateConfig_CustomHeadersReachWire(t *testing.T) {
 	}
 	if got := capturedHeaders.Get("x-another"); got != "another-value" {
 		t.Fatalf("expected x-another %q, got %q", "another-value", got)
+	}
+}
+
+func TestBuildGenkitGenerateConfig_OpenCodeGoGeminiBaseURLAndThinking(t *testing.T) {
+	cfg := buildGenkitGenerateConfig("high", providerconfig.Provider(config.ProviderOpenCodeGo), openCodeGoGoogleBaseURL, map[string]string{
+		"x-custom-header": "custom-value",
+	})
+	if cfg == nil {
+		t.Fatal("expected config")
+	}
+	if cfg.ThinkingConfig == nil || cfg.ThinkingConfig.ThinkingLevel != genai.ThinkingLevelHigh {
+		t.Fatal("expected high thinking level")
+	}
+	if cfg.HTTPOptions == nil || cfg.HTTPOptions.BaseURL != openCodeGoGoogleBaseURL {
+		t.Fatalf("expected base URL %s, got %+v", openCodeGoGoogleBaseURL, cfg.HTTPOptions)
+	}
+	if got := cfg.HTTPOptions.Headers.Get("x-custom-header"); got != "custom-value" {
+		t.Fatalf("expected x-custom-header %q, got %q", "custom-value", got)
+	}
+}
+
+func TestGenkitGenerateConfig_BaseURLOverrideReachesWire(t *testing.T) {
+	ctx := context.Background()
+
+	var capturedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"candidates": [{"content": {"parts": [{"text": "hello"}], "role": "model"}}]}`))
+	}))
+	defer server.Close()
+
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey:  "test-api-key",
+		Backend: genai.BackendGeminiAPI,
+	})
+	if err != nil {
+		t.Fatalf("failed to create genai client: %v", err)
+	}
+
+	cfg := buildGenkitGenerateConfig("", providerconfig.Provider(config.ProviderOpenCodeGo), server.URL+"/inference/go/google/", nil)
+
+	_, err = client.Models.GenerateContent(ctx, "gemini-4-argon", genai.Text("hi"), cfg)
+	if err != nil {
+		t.Fatalf("GenerateContent failed: %v", err)
+	}
+
+	want := "/inference/go/google/v1beta/models/gemini-4-argon:generateContent"
+	if capturedPath != want {
+		t.Fatalf("expected request path %q, got %q", want, capturedPath)
+	}
+}
+
+func TestGenkitRequestHeaders_OpenCodeGoSessionHeader(t *testing.T) {
+	base := map[string]string{"x-custom": "v"}
+
+	got := genkitRequestHeaders(base, providerconfig.Provider(config.ProviderOpenCodeGo), "ab-cd-ef")
+	if got["x-opencode-session"] != "abcdef" {
+		t.Fatalf("expected x-opencode-session abcdef, got %q", got["x-opencode-session"])
+	}
+	if got["x-custom"] != "v" {
+		t.Fatalf("expected base headers preserved, got %v", got)
+	}
+	if _, ok := base["x-opencode-session"]; ok {
+		t.Fatal("base headers must not be mutated")
+	}
+
+	if got := genkitRequestHeaders(base, providerconfig.Provider(config.ProviderGoogleAI), "ab-cd"); got["x-opencode-session"] != "" {
+		t.Fatalf("googleai must not receive x-opencode-session, got %v", got)
+	}
+	if got := genkitRequestHeaders(base, providerconfig.Provider(config.ProviderOpenCodeGo), ""); got["x-opencode-session"] != "" {
+		t.Fatalf("empty session must not set header, got %v", got)
+	}
+}
+
+func TestGenkitGenerateConfig_OpenCodeSessionHeaderReachesWire(t *testing.T) {
+	ctx := context.Background()
+
+	var gotSession string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSession = r.Header.Get("x-opencode-session")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"candidates": [{"content": {"parts": [{"text": "hello"}], "role": "model"}}]}`))
+	}))
+	defer server.Close()
+
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: "test-api-key", Backend: genai.BackendGeminiAPI})
+	if err != nil {
+		t.Fatalf("failed to create genai client: %v", err)
+	}
+
+	headers := genkitRequestHeaders(nil, providerconfig.Provider(config.ProviderOpenCodeGo), "0f1e2d3c-4b5a")
+	cfg := buildGenkitGenerateConfig("", providerconfig.Provider(config.ProviderOpenCodeGo), server.URL+"/inference/go/google/", headers)
+	if _, err := client.Models.GenerateContent(ctx, "gemini-4-argon", genai.Text("hi"), cfg); err != nil {
+		t.Fatalf("GenerateContent failed: %v", err)
+	}
+
+	if gotSession != "0f1e2d3c4b5a" {
+		t.Fatalf("expected x-opencode-session 0f1e2d3c4b5a on wire, got %q", gotSession)
+	}
+}
+
+func TestGenkitClient_StreamChat_UsageIncludesThoughtsAndCachedTokens(t *testing.T) {
+	client := &GenkitClient{
+		g:        &genkit.Genkit{},
+		provider: providerconfig.Provider(config.ProviderGoogleAI),
+		model:    "googleai/gemini-pro",
+	}
+
+	client.streamImpl = func(ctx context.Context, g *genkit.Genkit, opts ...ai.GenerateOption) iter.Seq2[*ai.ModelStreamValue, error] {
+		return func(yield func(*ai.ModelStreamValue, error) bool) {
+			yield(&ai.ModelStreamValue{
+				Done: true,
+				Response: &ai.ModelResponse{
+					Message: &ai.Message{
+						Role:    ai.RoleModel,
+						Content: []*ai.Part{ai.NewTextPart("ok")},
+					},
+					Usage: &ai.GenerationUsage{
+						InputTokens:         100,
+						OutputTokens:        20,
+						ThoughtsTokens:      15,
+						CachedContentTokens: 40,
+						CacheWriteTokens:    10,
+						TotalTokens:         135,
+					},
+				},
+			}, nil)
+		}
+	}
+
+	eventCh, err := client.StreamChat(context.Background(), []core.Message{{Role: core.RoleUser, Content: "Hi"}}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var gotUsage *core.TokenUsage
+	for event := range eventCh {
+		if event.Type == core.StreamEventTypeUsage {
+			gotUsage = event.Usage
+		}
+	}
+
+	if gotUsage == nil {
+		t.Fatal("expected usage event")
+	}
+	if gotUsage.InputTokens != 100 || gotUsage.OutputTokens != 35 || gotUsage.TotalTokens != 135 {
+		t.Fatalf("unexpected token counts: %+v", gotUsage)
+	}
+	if gotUsage.ReasoningTokens != 15 || gotUsage.CachedTokens != 50 || gotUsage.CacheReadTokens != 40 || gotUsage.CacheWriteTokens != 10 {
+		t.Fatalf("unexpected reasoning/cache token counts: %+v", gotUsage)
 	}
 }

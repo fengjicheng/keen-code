@@ -5,7 +5,7 @@ import (
 	"github.com/mochow13/keen-code/internal/tools"
 )
 
-func ToGenkitTool(t tools.Tool) *ai.ToolDef[any, any] {
+func ToGenkitTool(t tools.Tool) *ai.ToolAction[any, any] {
 	return ai.NewTool(
 		t.Name(),
 		t.Description(),

@@ -622,3 +622,35 @@ func TestNewClient_RegisteredModelsRequestParameters(t *testing.T) {
 		})
 	}
 }
+
+func TestNewClient_OpenCodeGoGeminiModelUsesGenkit(t *testing.T) {
+	client, err := NewClient(&config.ResolvedConfig{
+		Provider:       config.ProviderOpenCodeGo,
+		Model:          "gemini-4-argon",
+		APIKey:         "test-api-key",
+		ThinkingEffort: "high",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	genkitClient, ok := client.(*GenkitClient)
+	if !ok {
+		t.Fatalf("expected *GenkitClient, got %T", client)
+	}
+	if genkitClient.provider != providerconfig.Provider(config.ProviderOpenCodeGo) {
+		t.Errorf("expected provider opencode-go, got %s", genkitClient.provider)
+	}
+	if genkitClient.model != "googleai/gemini-4-argon" {
+		t.Errorf("expected model googleai/gemini-4-argon, got %s", genkitClient.model)
+	}
+	if genkitClient.baseURL != openCodeGoGoogleBaseURL {
+		t.Errorf("expected base URL %s, got %s", openCodeGoGoogleBaseURL, genkitClient.baseURL)
+	}
+	if genkitClient.thinkingEffort != "high" {
+		t.Errorf("expected thinking effort high, got %q", genkitClient.thinkingEffort)
+	}
+	if genkitClient.contextWindowTokenCount != 1048576 {
+		t.Errorf("expected context window 1048576, got %d", genkitClient.contextWindowTokenCount)
+	}
+}

@@ -172,6 +172,10 @@ providers:
   - id: googleai
     name: Google AI
     models:
+      - id: gemini-4-argon
+        name: Gemini 4 Argon
+        context_window: 1048576
+        thinking_efforts: ["low", "medium", "high"]
       - id: gemini-3.8-flash
         name: Gemini 3.8 Flash
         context_window: 1048576
@@ -196,6 +200,10 @@ providers:
   - id: moonshotai
     name: Moonshot AI
     models:
+      - id: kimi-k3.1-pro
+        name: Kimi K3.1 Pro
+        context_window: 1048576
+        thinking_efforts: ["low", "high", "max"]
       - id: kimi-k3
         name: Kimi K3
         context_window: 1000000
@@ -275,6 +283,14 @@ providers:
   - id: opencode-go
     name: OpenCode Go
     models:
+      - id: kimi-k3.1-pro
+        name: Kimi K3.1 Pro
+        context_window: 1048576
+        thinking_efforts: ["low", "high", "max"]
+      - id: gemini-4-argon
+        name: Gemini 4 Argon
+        context_window: 1048576
+        thinking_efforts: ["low", "medium", "high"]
       - id: claude-haiku-5-5
         name: Claude Haiku 5.5
         context_window: 1000000

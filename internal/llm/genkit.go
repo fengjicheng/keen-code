@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -38,6 +39,7 @@ type GenkitClient struct {
 	pendingState            []*ai.Message
 	contextWindowTokenCount int
 	headers                 map[string]string
+	baseURL                 string
 }
 
 func NewGenkitClient(cfg *providerconfig.ClientConfig) (*GenkitClient, error) {
@@ -47,7 +49,7 @@ func NewGenkitClient(cfg *providerconfig.ClientConfig) (*GenkitClient, error) {
 	var modelName string
 
 	switch cfg.Provider {
-	case config.ProviderGoogleAI:
+	case config.ProviderGoogleAI, config.ProviderOpenCodeGo:
 		g = genkit.Init(ctx, genkit.WithPlugins(&googlegenai.GoogleAI{
 			APIKey: cfg.APIKey,
 		}))
@@ -60,6 +62,10 @@ func NewGenkitClient(cfg *providerconfig.ClientConfig) (*GenkitClient, error) {
 		return nil, fmt.Errorf("failed to initialize genkit")
 	}
 
+	var baseURL string
+	if cfg.Provider == config.ProviderOpenCodeGo {
+		baseURL = cfg.BaseURL
+	}
 	return &GenkitClient{
 		g:                       g,
 		provider:                cfg.Provider,
@@ -69,6 +75,7 @@ func NewGenkitClient(cfg *providerconfig.ClientConfig) (*GenkitClient, error) {
 		contextWindowTokenCount: cfg.ContextWindowTokens,
 		streamImpl:              genkit.GenerateStream,
 		headers:                 cfg.Headers,
+		baseURL:                 baseURL,
 	}, nil
 }
 
@@ -142,9 +149,18 @@ func thinkingLevelForEffort(effort string) genai.ThinkingLevel {
 	}
 }
 
-func buildGenkitGenerateConfig(thinkingEffort string, provider providerconfig.Provider, headers map[string]string) *genai.GenerateContentConfig {
+func genkitRequestHeaders(headers map[string]string, provider providerconfig.Provider, sessionID string) map[string]string {
+	if provider != providerconfig.Provider(config.ProviderOpenCodeGo) || sessionID == "" {
+		return headers
+	}
+	merged := make(map[string]string, len(headers)+1)
+	maps.Copy(merged, headers)
+	merged["x-opencode-session"] = opencodeSessionID(sessionID)
+	return merged
+}
+func buildGenkitGenerateConfig(thinkingEffort string, provider providerconfig.Provider, baseURL string, headers map[string]string) *genai.GenerateContentConfig {
 	var cfg *genai.GenerateContentConfig
-	if thinkingEffort != "" && provider == providerconfig.Provider(config.ProviderGoogleAI) {
+	if thinkingEffort != "" && (provider == providerconfig.Provider(config.ProviderGoogleAI) || provider == providerconfig.Provider(config.ProviderOpenCodeGo)) {
 		level := thinkingLevelForEffort(thinkingEffort)
 		if level != genai.ThinkingLevelUnspecified {
 			cfg = &genai.GenerateContentConfig{
@@ -155,11 +171,12 @@ func buildGenkitGenerateConfig(thinkingEffort string, provider providerconfig.Pr
 			}
 		}
 	}
-	if len(headers) > 0 {
+	if baseURL != "" || len(headers) > 0 {
 		if cfg == nil {
 			cfg = &genai.GenerateContentConfig{}
 		}
 		cfg.HTTPOptions = &genai.HTTPOptions{
+			BaseURL: baseURL,
 			Headers: make(http.Header, len(headers)),
 		}
 		for k, v := range headers {
@@ -260,7 +277,7 @@ func (c *GenkitClient) StreamChat(
 				ai.WithMessages(aiMessages...),
 			}
 
-			if genCfg := buildGenkitGenerateConfig(c.thinkingEffort, c.provider, c.headers); genCfg != nil {
+			if genCfg := buildGenkitGenerateConfig(c.thinkingEffort, c.provider, c.baseURL, genkitRequestHeaders(c.headers, c.provider, streamOpts.SessionID)); genCfg != nil {
 				opts = append(opts, ai.WithConfig(genCfg))
 			}
 
@@ -280,13 +297,17 @@ func (c *GenkitClient) StreamChat(
 				return
 			}
 
-			if modelResponse.Usage != nil && (modelResponse.Usage.InputTokens > 0 || modelResponse.Usage.OutputTokens > 0) {
+			if modelResponse.Usage != nil && (modelResponse.Usage.InputTokens > 0 || modelResponse.Usage.OutputTokens > 0 || modelResponse.Usage.ThoughtsTokens > 0) {
 				sendStreamEvent(ctx, eventCh, core.StreamEvent{
 					Type: core.StreamEventTypeUsage,
 					Usage: &core.TokenUsage{
-						InputTokens:  modelResponse.Usage.InputTokens,
-						OutputTokens: modelResponse.Usage.OutputTokens,
-						TotalTokens:  modelResponse.Usage.TotalTokens,
+						InputTokens:      modelResponse.Usage.InputTokens,
+						OutputTokens:     modelResponse.Usage.OutputTokens + modelResponse.Usage.ThoughtsTokens,
+						TotalTokens:      modelResponse.Usage.TotalTokens,
+						ReasoningTokens:  modelResponse.Usage.ThoughtsTokens,
+						CachedTokens:     modelResponse.Usage.CachedContentTokens + modelResponse.Usage.CacheWriteTokens,
+						CacheReadTokens:  modelResponse.Usage.CachedContentTokens,
+						CacheWriteTokens: modelResponse.Usage.CacheWriteTokens,
 					},
 				})
 			}
@@ -474,14 +495,18 @@ func (c *GenkitClient) exitIncomplete(
 
 func (c *GenkitClient) executeTools(
 	ctx context.Context,
-	toolRequests []*ai.ToolRequest,
+	toolRequests []*ai.Part,
 	registry *tools.Registry,
 	eventCh chan<- core.StreamEvent,
 ) ([]*ai.Part, []core.HistoricalToolActivity) {
 	toolResponseParts := make([]*ai.Part, 0, len(toolRequests))
 	activities := make([]core.HistoricalToolActivity, 0, len(toolRequests))
 
-	for _, req := range toolRequests {
+	for _, part := range toolRequests {
+		if part == nil || part.ToolRequest == nil {
+			continue
+		}
+		req := part.ToolRequest
 		input, _ := req.Input.(map[string]any)
 		if input == nil {
 			if raw, ok := req.Input.(json.RawMessage); ok {

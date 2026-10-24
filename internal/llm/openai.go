@@ -468,7 +468,7 @@ func openAIThinkingMode(provider providerconfig.Provider, model string) openAITh
 		return openAIThinkingParamToggleAndReasoningEffort
 	case providerconfig.Provider(config.ProviderMoonshotAI):
 		switch model {
-		case "kimi-k3":
+		case "kimi-k3", "kimi-k3.1-pro":
 			return openAIThinkingParamReasoningEffort
 		case "kimi-k2.6":
 			return openAIThinkingParamType
