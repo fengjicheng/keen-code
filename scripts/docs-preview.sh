@@ -5,11 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/.venv/bin/activate"
 
 cleanup() {
-  rm -rf _docs mkdocs.yml site
+  rm -rf _docs mkdocs.yml site .cache
 }
 trap cleanup EXIT
 
-pip show mkdocs-material &>/dev/null || pip install mkdocs-material
+export DYLD_FALLBACK_LIBRARY_PATH="${DYLD_FALLBACK_LIBRARY_PATH:+$DYLD_FALLBACK_LIBRARY_PATH:}/opt/homebrew/lib:/usr/local/lib"
+pip show mkdocs-material pillow cairosvg &>/dev/null || pip install "mkdocs-material[imaging]"
 
 mkdir -p _docs
 cp README.md TOUR.md ROADMAP.md CHANGELOG.md CONTRIBUTING.md AGENTS.md index.md _docs/

@@ -15,6 +15,7 @@ TITLE_CASE = {"oauth": "OAuth"}
 
 BASE_CONFIG = {
     "site_name": "Keen Code",
+    "site_description": "Your terminal-native AI coding agent — lean on context, multi-provider by design, and extended through skill-driven MCP.",
     "site_url": "https://mochow13.github.io/keen-code",
     "repo_url": "https://github.com/mochow13/keen-code",
     "repo_name": "mochow13/keen-code",
@@ -61,6 +62,10 @@ BASE_CONFIG = {
         ],
         "font": {"code": "Cascadia Code"},
     },
+    "plugins": [
+        "search",
+        "social",
+    ],
     "extra_css": ["extra.css"],
     "extra_javascript": ["extra.js"],
     "extra": {

@@ -9,4 +9,5 @@ bench/tasks.json
 bench/usage.csv
 _docs/
 mkdocs.yml
+.cache/
 *_ANALYSIS.md
