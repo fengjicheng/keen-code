@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-10-25
+
+### Added
+- Add Gemini 4 Argon, Gemini 3.8/3.7/3.6 Flash, Gemini 3.5 Flash-Lite, and Gemini 3.1 Pro support through Google AI.
+- Add OpenCode Go Gemini and Kimi K3.1 model entries, with Gemini requests routed through its Google-compatible endpoint.
+
+### Changed
+- Upgrade the Genkit Go SDK to v1.14.0 and preserve reasoning and cache token usage reporting.
+
+
 ## [0.64.2] - 2026-10-23
 
 ### Changed
@@ -1134,7 +1144,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GoReleaser config for cross-platform binary distribution
 - npm wrapper package for installation via `npm install -g keen-code`
 
-[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.64.2...HEAD
+[Unreleased]: https://github.com/mochow13/keen-code/compare/v0.65.0...HEAD
+[0.65.0]: https://github.com/mochow13/keen-code/compare/v0.64.2...v0.65.0
 [0.64.2]: https://github.com/mochow13/keen-code/compare/v0.64.1...v0.64.2
 [0.64.1]: https://github.com/mochow13/keen-code/compare/v0.64.0...v0.64.1
 [0.64.0]: https://github.com/mochow13/keen-code/compare/v0.63.0...v0.64.0
