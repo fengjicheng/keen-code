@@ -21,7 +21,9 @@ From requirements to implementation, Keen Code was engineered using a wide range
 
 Keen Code is also an experiment to play with the *new way of working* where engineers work with AI agents to develop software. In this setting, engineers are sometimes referred to as "orchestrators".
 
-
+<div align="center">
+  <img src="./assets/demo.gif" alt="Keen Code demo" width="1200"/>
+</div>
 
 ## Table of Contents
 
