@@ -1,13 +1,13 @@
 <div align="center">
 
-<img src="./assets/keen-code-2.png" alt="Keen Code" width="500"/>
+<img src="./assets/banner.svg" alt="Keen Code — Your terminal. Your models. Your workflow." width="1000"/>
 
-[![Latest Release](https://img.shields.io/github/v/release/mochow13/keen-code?style=flat-square&logo=github)](https://github.com/mochow13/keen-code/releases/latest)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/mochow13/keen-code/go.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white)](https://github.com/mochow13/keen-code/actions)
-[![Coverage](https://codecov.io/gh/mochow13/keen-code/graph/badge.svg)](https://codecov.io/gh/mochow13/keen-code)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mochow13/keen-code.svg)](https://pkg.go.dev/github.com/mochow13/keen-code)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/mochow13/keen-code?style=flat-square&logo=go)](https://go.dev/)
-[![License](https://img.shields.io/github/license/mochow13/keen-code?style=flat-square&logo=opensourceinitiative&logoColor=white)](https://github.com/mochow13/keen-code/blob/main/LICENSE)
+<a href="https://github.com/mochow13/keen-code/releases/latest"><img src="https://img.shields.io/github/v/release/mochow13/keen-code?style=flat&amp;logo=github&amp;logoColor=7986CB&amp;labelColor=1B2030&amp;color=5C6BC0" alt="Latest Release" height="26"/></a>
+<a href="https://github.com/mochow13/keen-code/actions"><img src="https://img.shields.io/github/actions/workflow/status/mochow13/keen-code/go.yml?branch=main&amp;style=flat&amp;logo=githubactions&amp;logoColor=649FA9&amp;labelColor=1B2030&amp;color=649FA9&amp;label=build" alt="Build Status" height="26"/></a>
+<a href="https://codecov.io/gh/mochow13/keen-code"><img src="https://img.shields.io/codecov/c/github/mochow13/keen-code?style=flat&amp;logo=codecov&amp;logoColor=649FA9&amp;labelColor=1B2030&amp;color=649FA9" alt="Coverage" height="26"/></a>
+<a href="https://pkg.go.dev/github.com/mochow13/keen-code"><img src="https://img.shields.io/badge/go-reference-5C6BC0?style=flat&amp;logo=go&amp;logoColor=7986CB&amp;labelColor=1B2030" alt="Go Reference" height="26"/></a>
+<a href="https://go.dev/"><img src="https://img.shields.io/github/go-mod/go-version/mochow13/keen-code?style=flat&amp;logo=go&amp;logoColor=649FA9&amp;labelColor=1B2030&amp;color=649FA9" alt="Go Version" height="26"/></a>
+<a href="https://github.com/mochow13/keen-code/blob/main/LICENSE"><img src="https://img.shields.io/github/license/mochow13/keen-code?style=flat&amp;logo=opensourceinitiative&amp;logoColor=7986CB&amp;labelColor=1B2030&amp;color=5C6BC0" alt="License" height="26"/></a>
 
 <a href="https://www.producthunt.com/products/keen-code-a-cli-coding-agent?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-keen-code" target="_blank" rel="noopener noreferrer"><img alt="Keen Code - A context-efficient CLI coding agent built by agents | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1162542&theme=dark&t=1780593417757"></a>
 
@@ -21,18 +21,11 @@ From requirements to implementation, Keen Code was engineered using a wide range
 
 Keen Code is also an experiment to play with the *new way of working* where engineers work with AI agents to develop software. In this setting, engineers are sometimes referred to as "orchestrators".
 
-<h3 align="center">
-  Born as an experiment, Keen is now a fully functional coding agent designed for real-world software development.
-</h3>
 
-<div align="center">
-  <img src="./assets/demo.gif" alt="Keen Code demo" width="1200"/>
-</div>
 
 ## Table of Contents
 
 - [Features](#features)
-- [Screenshots](#screenshots)
 - [Development Philosophy](#development-philosophy)
 - [Development Cycle Example](#development-cycle-example)
 - [Install Keen Code](#install-keen-code)
@@ -63,48 +56,6 @@ Keen Code is also an experiment to play with the *new way of working* where engi
 - **Input queuing** — Prompts and skill activations typed while the agent streams are queued, previewed, and submitted one at a time as turns complete. Clear the queue with `/emptyq`. See [docs/queuing.md](docs/queuing.md).
 - **Headless mode** — Run a non-interactive turn with `keen run "<prompt>"`, with `--format json` output, provider/model overrides, `--completion-signal` gating, and `--session` resume. See [docs/cli-usage.md#headless-mode-keen-run](docs/cli-usage.md#headless-mode-keen-run).
 - **Permission system** — Filesystem access is guard-checked: working-directory paths pass, sensitive paths prompt for approval, and system or `.gitignore` paths are denied. Always-allow tools with `/allow-permission`. See [docs/permission-system.md](docs/permission-system.md).
-
-## Screenshots
-
-<table>
-  <tr>
-    <td width="50%" align="center">
-      <a href="./assets/full-interface.png">
-        <img src="./assets/full-interface.png" alt="Keen Code full interface" width="100%">
-      </a>
-      <br><sub>Full interface</sub>
-    </td>
-    <td width="50%" align="center">
-      <a href="./assets/output.png">
-        <img src="./assets/output.png" alt="Keen Code command output" width="100%">
-      </a>
-      <br><sub>Command output</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <a href="./assets/diff.png">
-        <img src="./assets/diff.png" alt="Reviewing a code diff in Keen Code" width="100%">
-      </a>
-      <br><sub>Diff review</sub>
-    </td>
-    <td width="50%" align="center">
-      <a href="./assets/commands.png">
-        <img src="./assets/commands.png" alt="Keen Code interactive commands" width="100%">
-      </a>
-      <br><sub>Interactive commands</sub>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center">
-      <a href="./assets/permission.png">
-        <img src="./assets/permission.png" alt="Keen Code permission prompt" width="50%">
-      </a>
-      <br><sub>Permission prompt</sub>
-    </td>
-  </tr>
-</table>
-
 
 ## How Keen Handles Context
 
