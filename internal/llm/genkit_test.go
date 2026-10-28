@@ -39,7 +39,7 @@ func TestGenkitClient_StreamChat_Success(t *testing.T) {
 					return
 				}
 			}
-			yield(&ai.ModelStreamValue{Done: true}, nil)
+			yield(&ai.ModelStreamValue{Done: true, Response: &ai.ModelResponse{FinishReason: ai.FinishReasonStop, Message: &ai.Message{Role: ai.RoleModel}}}, nil)
 		}
 	}
 
@@ -184,7 +184,7 @@ func TestGenkitClient_StreamChat_EmptyMessages(t *testing.T) {
 
 	client.streamImpl = func(ctx context.Context, g *genkit.Genkit, opts ...ai.GenerateOption) iter.Seq2[*ai.ModelStreamValue, error] {
 		return func(yield func(*ai.ModelStreamValue, error) bool) {
-			yield(&ai.ModelStreamValue{Done: true}, nil)
+			yield(&ai.ModelStreamValue{Done: true, Response: &ai.ModelResponse{FinishReason: ai.FinishReasonStop, Message: &ai.Message{Role: ai.RoleModel}}}, nil)
 		}
 	}
 
@@ -244,7 +244,7 @@ func TestGenkitClient_StreamChat_MultipleMessages(t *testing.T) {
 
 	client.streamImpl = func(ctx context.Context, g *genkit.Genkit, opts ...ai.GenerateOption) iter.Seq2[*ai.ModelStreamValue, error] {
 		return func(yield func(*ai.ModelStreamValue, error) bool) {
-			yield(&ai.ModelStreamValue{Done: true}, nil)
+			yield(&ai.ModelStreamValue{Done: true, Response: &ai.ModelResponse{FinishReason: ai.FinishReasonStop, Message: &ai.Message{Role: ai.RoleModel}}}, nil)
 		}
 	}
 
@@ -310,7 +310,7 @@ func TestGenkitClient_StreamChat_EmptyChunkContent(t *testing.T) {
 			}, nil) {
 				return
 			}
-			yield(&ai.ModelStreamValue{Done: true}, nil)
+			yield(&ai.ModelStreamValue{Done: true, Response: &ai.ModelResponse{FinishReason: ai.FinishReasonStop, Message: &ai.Message{Role: ai.RoleModel}}}, nil)
 		}
 	}
 
@@ -424,6 +424,7 @@ func TestGenkitClient_StreamChat_ToolInvocation(t *testing.T) {
 				yield(&ai.ModelStreamValue{
 					Done: true,
 					Response: &ai.ModelResponse{
+						FinishReason: ai.FinishReasonStop,
 						Message: &ai.Message{
 							Role: ai.RoleModel,
 							Content: []*ai.Part{
@@ -447,7 +448,8 @@ func TestGenkitClient_StreamChat_ToolInvocation(t *testing.T) {
 				yield(&ai.ModelStreamValue{
 					Done: true,
 					Response: &ai.ModelResponse{
-						Message: &ai.Message{Role: ai.RoleModel},
+						FinishReason: ai.FinishReasonStop,
+						Message:      &ai.Message{Role: ai.RoleModel},
 					},
 				}, nil)
 			}
@@ -596,6 +598,7 @@ func TestGenkitClient_PendingState_ErrorMidLoop(t *testing.T) {
 				yield(&ai.ModelStreamValue{
 					Done: true,
 					Response: &ai.ModelResponse{
+						FinishReason: ai.FinishReasonStop,
 						Message: &ai.Message{
 							Role: ai.RoleModel,
 							Content: []*ai.Part{
@@ -676,6 +679,7 @@ func TestGenkitClient_PendingState_InjectedOnNextCall(t *testing.T) {
 				yield(&ai.ModelStreamValue{
 					Done: true,
 					Response: &ai.ModelResponse{
+						FinishReason: ai.FinishReasonStop,
 						Message: &ai.Message{
 							Role: ai.RoleModel,
 							Content: []*ai.Part{
@@ -701,7 +705,8 @@ func TestGenkitClient_PendingState_InjectedOnNextCall(t *testing.T) {
 				yield(&ai.ModelStreamValue{
 					Done: true,
 					Response: &ai.ModelResponse{
-						Message: &ai.Message{Role: ai.RoleModel},
+						FinishReason: ai.FinishReasonStop,
+						Message:      &ai.Message{Role: ai.RoleModel},
 					},
 				}, nil)
 			}
@@ -873,7 +878,8 @@ func TestGenkitClient_PendingState_ClearedOnSuccess(t *testing.T) {
 			yield(&ai.ModelStreamValue{
 				Done: true,
 				Response: &ai.ModelResponse{
-					Message: &ai.Message{Role: ai.RoleModel},
+					FinishReason: ai.FinishReasonStop,
+					Message:      &ai.Message{Role: ai.RoleModel},
 				},
 			}, nil)
 		}
@@ -1105,6 +1111,7 @@ func TestGenkitClient_StreamChat_UsageIncludesThoughtsAndCachedTokens(t *testing
 			yield(&ai.ModelStreamValue{
 				Done: true,
 				Response: &ai.ModelResponse{
+					FinishReason: ai.FinishReasonStop,
 					Message: &ai.Message{
 						Role:    ai.RoleModel,
 						Content: []*ai.Part{ai.NewTextPart("ok")},
@@ -1142,5 +1149,101 @@ func TestGenkitClient_StreamChat_UsageIncludesThoughtsAndCachedTokens(t *testing
 	}
 	if gotUsage.ReasoningTokens != 15 || gotUsage.CachedTokens != 50 || gotUsage.CacheReadTokens != 40 || gotUsage.CacheWriteTokens != 10 {
 		t.Fatalf("unexpected reasoning/cache token counts: %+v", gotUsage)
+	}
+}
+
+func TestGenkitClient_StreamChat_FinalResponse(t *testing.T) {
+	tests := []struct {
+		name      string
+		response  *ai.ModelResponse
+		wantText  string
+		wantError string
+	}{
+		{"missing response", nil, "", "without a final response"},
+		{"missing message", &ai.ModelResponse{FinishReason: ai.FinishReasonStop}, "", "no message"},
+		{"blocked", &ai.ModelResponse{FinishReason: ai.FinishReasonBlocked, FinishMessage: "safety", Message: &ai.Message{}}, "", "blocked safety"},
+		{"length", &ai.ModelResponse{FinishReason: ai.FinishReasonLength, Message: &ai.Message{}}, "", "length"},
+		{"missing finish", &ai.ModelResponse{Message: &ai.Message{}}, "", "without a finish reason"},
+		{"final text", &ai.ModelResponse{FinishReason: ai.FinishReasonStop, Message: &ai.Message{Content: []*ai.Part{ai.NewTextPart("answer")}}}, "answer", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &GenkitClient{maxRetries: 1, provider: providerconfig.Provider(config.ProviderGoogleAI)}
+			client.streamImpl = func(context.Context, *genkit.Genkit, ...ai.GenerateOption) iter.Seq2[*ai.ModelStreamValue, error] {
+				return func(yield func(*ai.ModelStreamValue, error) bool) {
+					yield(&ai.ModelStreamValue{Done: true, Response: tt.response}, nil)
+				}
+			}
+			ch, err := client.StreamChat(context.Background(), nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var text, gotError string
+			var done bool
+			for event := range ch {
+				switch event.Type {
+				case core.StreamEventTypeChunk:
+					text += event.Content
+				case core.StreamEventTypeError:
+					gotError = event.Error.Error()
+				case core.StreamEventTypeDone:
+					done = true
+				}
+			}
+			if text != tt.wantText || (tt.wantError != "" && !strings.Contains(gotError, tt.wantError)) || done != (tt.wantError == "") {
+				t.Fatalf("text=%q error=%q done=%v", text, gotError, done)
+			}
+		})
+	}
+}
+
+func TestGenkitClient_StreamChat_FinalContentReconciliation(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		chunks []string
+		final  string
+		want   string
+	}{
+		{"no chunks", nil, "Hello world", "Hello world"},
+		{"missing tail", []string{"Hel", "lo"}, "Hello world", "Hello world"},
+		{"complete", []string{"Hello", " world"}, "Hello world", "Hello world"},
+		{"different final", []string{"Hello"}, "Goodbye", "Hello"},
+		{"empty final", []string{"Hello"}, "", "Hello"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &GenkitClient{maxRetries: 1}
+			client.streamImpl = func(context.Context, *genkit.Genkit, ...ai.GenerateOption) iter.Seq2[*ai.ModelStreamValue, error] {
+				return func(yield func(*ai.ModelStreamValue, error) bool) {
+					for _, chunk := range tt.chunks {
+						if !yield(&ai.ModelStreamValue{Chunk: &ai.ModelResponseChunk{Content: []*ai.Part{ai.NewTextPart(chunk)}}}, nil) {
+							return
+						}
+					}
+					yield(&ai.ModelStreamValue{Done: true, Response: &ai.ModelResponse{
+						FinishReason: ai.FinishReasonStop,
+						Message:      &ai.Message{Content: []*ai.Part{ai.NewTextPart(tt.final)}},
+					}}, nil)
+				}
+			}
+			ch, err := client.StreamChat(context.Background(), nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var text strings.Builder
+			var done bool
+			for event := range ch {
+				switch event.Type {
+				case core.StreamEventTypeChunk:
+					text.WriteString(event.Content)
+				case core.StreamEventTypeDone:
+					done = true
+				case core.StreamEventTypeError, core.StreamEventTypeIncomplete:
+					t.Fatalf("unexpected event: %+v", event)
+				}
+			}
+			if text.String() != tt.want || !done {
+				t.Fatalf("text = %q, done = %v; want %q and done", text.String(), done, tt.want)
+			}
+		})
 	}
 }

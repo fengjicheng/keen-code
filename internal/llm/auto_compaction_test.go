@@ -202,7 +202,7 @@ func TestRemainingClientsPreserveInputHistory(t *testing.T) {
 							if text != "" && !yield(&ai.ModelStreamValue{Chunk: &ai.ModelResponseChunk{Content: []*ai.Part{ai.NewTextPart(text)}}}, nil) {
 								return
 							}
-							yield(&ai.ModelStreamValue{Done: true, Response: &ai.ModelResponse{Message: &ai.Message{Role: ai.RoleModel, Content: parts}}}, nil)
+							yield(&ai.ModelStreamValue{Done: true, Response: &ai.ModelResponse{FinishReason: ai.FinishReasonStop, Message: &ai.Message{Role: ai.RoleModel, Content: parts}}}, nil)
 						}
 					}
 					client = c

@@ -205,12 +205,16 @@ func (c *GenkitClient) collectTurn(
 ) (*ai.ModelResponse, error) {
 	stream := c.streamImpl(ctx, c.g, opts...)
 	var modelResponse *ai.ModelResponse
+	var streamedText strings.Builder
 
 	for result, err := range stream {
 		if err != nil {
 			return nil, err
 		}
 
+		if result == nil {
+			return nil, fmt.Errorf("model stream returned a nil event")
+		}
 		if result.Done {
 			modelResponse = result.Response
 			break
@@ -218,12 +222,16 @@ func (c *GenkitClient) collectTurn(
 
 		if result.Chunk != nil && len(result.Chunk.Content) > 0 {
 			for _, part := range result.Chunk.Content {
+				if part == nil {
+					continue
+				}
 				if part.IsReasoning() && part.Text != "" {
 					sendStreamEvent(ctx, eventCh, core.StreamEvent{
 						Type:    core.StreamEventTypeReasoningChunk,
 						Content: part.Text,
 					})
-				} else if (part.IsText() || part.IsData()) && part.Text != "" {
+				} else if part.IsText() && part.Text != "" {
+					streamedText.WriteString(part.Text)
 					sendStreamEvent(ctx, eventCh, core.StreamEvent{
 						Type:    core.StreamEventTypeChunk,
 						Content: part.Text,
@@ -233,6 +241,12 @@ func (c *GenkitClient) collectTurn(
 		}
 	}
 
+	if modelResponse == nil {
+		return nil, fmt.Errorf("model stream ended without a final response")
+	}
+	if modelResponse.Message != nil {
+		emitMissingFinalContent(ctx, eventCh, genkitAssistantText(modelResponse.Message), streamedText.String())
+	}
 	return modelResponse, nil
 }
 
@@ -292,8 +306,16 @@ func (c *GenkitClient) StreamChat(
 				return
 			}
 
-			if modelResponse == nil || modelResponse.Message == nil {
-				c.exitIncomplete(ctx, eventCh, aiMessages, turnStartLen, injectedPending, nil, oneShot)
+			if modelResponse.FinishReason != "" && modelResponse.FinishReason != ai.FinishReasonStop {
+				c.exitIncomplete(ctx, eventCh, aiMessages, turnStartLen, injectedPending, fmt.Errorf("model generation ended: %s %s", modelResponse.FinishReason, modelResponse.FinishMessage), oneShot)
+				return
+			}
+			if modelResponse.FinishReason == "" {
+				c.exitIncomplete(ctx, eventCh, aiMessages, turnStartLen, injectedPending, fmt.Errorf("model stream ended without a finish reason"), oneShot)
+				return
+			}
+			if modelResponse.Message == nil {
+				c.exitIncomplete(ctx, eventCh, aiMessages, turnStartLen, injectedPending, fmt.Errorf("model stream returned no message"), oneShot)
 				return
 			}
 
