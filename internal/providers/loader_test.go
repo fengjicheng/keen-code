@@ -96,6 +96,7 @@ func TestCodexMaximumContextWindows(t *testing.T) {
 
 	for modelID, want := range map[string]int{
 		"gpt-6.1-sol":   872000,
+		"gpt-6.1-terra": 872000,
 		"gpt-6-sol":     872000,
 		"gpt-6-luna":    872000,
 		"gpt-6-astra":   872000,
