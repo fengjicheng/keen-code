@@ -2347,7 +2347,6 @@ func TestHandleClearCommandPreservesModeAndResetsState(t *testing.T) {
 	m.ctx.workingDir = t.TempDir()
 	m.agentCore.SetMode(agentcore.ModePlan)
 	m.agentCore.AppendMessage(agentcore.Message{Role: agentcore.RoleUser, Content: "message"})
-	m.loading.lastTurnElapsedMsg = "done in 1s"
 	m.history.Push("history")
 	m.permissionRequester = replpermissions.NewRequester(config.NewProjectPermissions())
 
@@ -2355,7 +2354,7 @@ func TestHandleClearCommandPreservesModeAndResetsState(t *testing.T) {
 	if result.currentMode() != agentcore.ModePlan || len(result.agentCore.GetMessages()) != 0 {
 		t.Fatalf("clear result mode=%q messages=%#v", result.currentMode(), result.agentCore.GetMessages())
 	}
-	if result.loading.lastTurnElapsedMsg != "" || result.history.IsNavigating() {
+	if result.history.IsNavigating() {
 		t.Fatal("clear did not reset transient state")
 	}
 	output := ansi.Strip(result.output.Join())

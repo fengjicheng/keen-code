@@ -107,6 +107,7 @@ type replModel struct {
 	subagentUsage       <-chan usage.Record
 	classifiers         *classificationManager
 	router              routerState
+	turnUsage           turnUsage
 }
 
 type toolHistoryMode uint8
@@ -123,11 +124,15 @@ type bangState struct {
 }
 
 type loadingState struct {
-	spinner            spinner.Model
-	showSpinner        bool
-	text               string
-	startedAt          time.Time
-	lastTurnElapsedMsg string
+	spinner     spinner.Model
+	showSpinner bool
+	text        string
+	startedAt   time.Time
+}
+
+type turnUsage struct {
+	usage    agentcore.TokenUsage
+	hasUsage bool
 }
 
 type btwState struct {
@@ -704,7 +709,7 @@ func (m replModel) updateNormalMode(msg tea.Msg) (replModel, tea.Cmd) {
 		m.scrollToBottomIfFollowing()
 		return m, m.waitForAsyncEvent()
 	case subagentUsageMsg:
-		appendUsageRecord(msg.record)
+		m.recordSubagentUsage(msg.record)
 		return m, m.waitForAsyncEvent()
 
 	case diffReadyMsg:
@@ -940,10 +945,6 @@ func (m replModel) View() tea.View {
 			view.WriteString("\n")
 			view.WriteString("  ")
 			view.WriteString(repltheme.AccentStyle.Render(m.notification.text))
-			view.WriteString("\n")
-		} else if m.loading.lastTurnElapsedMsg != "" {
-			view.WriteString("\n")
-			view.WriteString(repltheme.TurnElapsedStyle.Render(m.loading.lastTurnElapsedMsg))
 			view.WriteString("\n")
 		}
 

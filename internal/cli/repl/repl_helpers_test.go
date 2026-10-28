@@ -12,9 +12,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	replaskuser "github.com/mochow13/keen-code/internal/cli/repl/askuser"
 	replpermissions "github.com/mochow13/keen-code/internal/cli/repl/permissions"
+	replstream "github.com/mochow13/keen-code/internal/cli/repl/stream"
 	repltooling "github.com/mochow13/keen-code/internal/cli/repl/tooling"
 	"github.com/mochow13/keen-code/internal/config"
 	"github.com/mochow13/keen-code/internal/session"
+	"github.com/mochow13/keen-code/internal/usage"
 )
 
 func TestDisplayModelName(t *testing.T) {
@@ -381,5 +383,178 @@ func TestToggleModeCyclesBuildPlanYolo(t *testing.T) {
 	}
 	if m.permissionRequester.HasPendingRequest() {
 		t.Fatal("unexpected pending request after toggle cycle")
+	}
+}
+
+func TestHandleLLMDoneAppendsTurnUsageLine(t *testing.T) {
+	sh := replstream.NewStreamHandler(nil)
+	sh.Start(make(chan agentcore.StreamEvent), "Loading...")
+	sh.HandleChunk("Hello world")
+
+	m := newTestModel()
+	m.stream.handler = sh
+	m.startLoading("Working...")
+	m.loading.startedAt = time.Now().Add(-4 * time.Second)
+
+	m, _ = m.handleLLMUsage(&agentcore.TokenUsage{
+		InputTokens:     10000,
+		OutputTokens:    250,
+		CacheReadTokens: 8000,
+	})
+	m, _ = m.handleLLMUsage(&agentcore.TokenUsage{
+		InputTokens:     4200,
+		OutputTokens:    130,
+		CacheReadTokens: 3500,
+	})
+
+	m, _ = m.handleLLMDone()
+	output := strings.Join(m.output.GetLines(), "\n")
+	want := "4s · in 14.2k · out 380 · cache 11.5k"
+	if !strings.Contains(output, "✔ ") || !strings.Contains(output, want) {
+		t.Fatalf("output = %q, want to contain %q", output, want)
+	}
+	if m.turnUsage.hasUsage {
+		t.Fatal("expected turnUsage to be reset after turn completes")
+	}
+}
+
+func TestHandleLLMDoneOmitsZeroTokenUsageLine(t *testing.T) {
+	sh := replstream.NewStreamHandler(nil)
+	sh.Start(make(chan agentcore.StreamEvent), "Loading...")
+	sh.HandleChunk("Hello world")
+
+	m := newTestModel()
+	m.stream.handler = sh
+	m.startLoading("Working...")
+	m.loading.startedAt = time.Now().Add(-4 * time.Second)
+
+	m, _ = m.handleLLMUsage(&agentcore.TokenUsage{})
+	m, _ = m.handleLLMUsage(&agentcore.TokenUsage{CacheWriteTokens: 500, ReasoningTokens: 120})
+
+	m, _ = m.handleLLMDone()
+	output := strings.Join(m.output.GetLines(), "\n")
+	if !strings.Contains(output, "4s") {
+		t.Fatalf("output = %q, want an elapsed-only turn line", output)
+	}
+	if strings.Contains(output, "in 0") || strings.Contains(output, "·") {
+		t.Fatalf("output = %q, want no zero token segments", output)
+	}
+}
+
+func TestHandleLLMDoneKeepsUsageAfterZeroTokenEvent(t *testing.T) {
+	sh := replstream.NewStreamHandler(nil)
+	sh.Start(make(chan agentcore.StreamEvent), "Loading...")
+	sh.HandleChunk("Hello world")
+
+	m := newTestModel()
+	m.stream.handler = sh
+	m.startLoading("Working...")
+	m.loading.startedAt = time.Now().Add(-4 * time.Second)
+
+	m, _ = m.handleLLMUsage(&agentcore.TokenUsage{})
+	m, _ = m.handleLLMUsage(&agentcore.TokenUsage{
+		InputTokens:     6000,
+		OutputTokens:    240,
+		CacheReadTokens: 1200,
+	})
+
+	m, _ = m.handleLLMDone()
+	output := strings.Join(m.output.GetLines(), "\n")
+	want := "4s · in 6k · out 240 · cache 1.2k"
+	if !strings.Contains(output, want) {
+		t.Fatalf("output = %q, want to contain %q", output, want)
+	}
+}
+
+func TestHandleLLMDoneIncludesAutoCompactionUsage(t *testing.T) {
+	sh := replstream.NewStreamHandler(nil)
+	sh.Start(make(chan agentcore.StreamEvent), "Loading...")
+	sh.HandleChunk("Hello world")
+
+	m := newTestModel()
+	m.stream.handler = sh
+	m.startLoading("Working...")
+	m.loading.startedAt = time.Now().Add(-4 * time.Second)
+
+	m, _ = m.handleLLMUsage(&agentcore.TokenUsage{
+		InputTokens:     10000,
+		OutputTokens:    250,
+		CacheReadTokens: 8000,
+	})
+	m, _ = m.handleAutoCompactionApplied(&agentcore.AutoCompactionEvent{
+		Usage: &agentcore.TokenUsage{
+			InputTokens:     2000,
+			OutputTokens:    100,
+			CacheReadTokens: 1500,
+		},
+	})
+
+	m, _ = m.handleLLMDone()
+	output := strings.Join(m.output.GetLines(), "\n")
+	want := "in 12k · out 350 · cache 9.5k"
+	if !strings.Contains(output, want) {
+		t.Fatalf("output = %q, want to contain %q", output, want)
+	}
+}
+
+func TestHandleLLMDoneIncludesSubagentUsage(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	sh := replstream.NewStreamHandler(nil)
+	sh.Start(make(chan agentcore.StreamEvent), "Loading...")
+	sh.HandleChunk("Hello world")
+
+	subagentUsage := make(chan usage.Record, 4)
+	subagentUsage <- usage.Record{Provider: "p", Model: "m", Input: 3000, Output: 120, CacheRead: 500}
+
+	m := newTestModel()
+	m.stream.handler = sh
+	m.subagentUsage = subagentUsage
+	m.startLoading("Working...")
+	m.loading.startedAt = time.Now().Add(-4 * time.Second)
+
+	m, _ = m.handleLLMUsage(&agentcore.TokenUsage{
+		InputTokens:     10000,
+		OutputTokens:    250,
+		CacheReadTokens: 8000,
+	})
+
+	m, _ = m.handleLLMDone()
+	output := strings.Join(m.output.GetLines(), "\n")
+	want := "in 13k · out 370 · cache 8.5k"
+	if !strings.Contains(output, want) {
+		t.Fatalf("output = %q, want to contain %q", output, want)
+	}
+}
+
+func TestSubagentUsageMsgAddsToTurnUsage(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m := newTestModel()
+	m.startLoading("Working...")
+
+	updated, _ := m.updateNormalMode(subagentUsageMsg{record: usage.Record{
+		Provider: "p", Model: "m", Input: 2000, Output: 90, CacheRead: 400,
+	}})
+	if updated.turnUsage.usage.InputTokens != 2000 || updated.turnUsage.usage.OutputTokens != 90 {
+		t.Fatalf("turn usage = %+v, want subagent tokens folded in", updated.turnUsage.usage)
+	}
+	if !updated.turnUsage.hasUsage {
+		t.Fatal("expected turnUsage to be marked as populated")
+	}
+}
+
+func TestAutoCompactionCancelledAddsUsageToTurn(t *testing.T) {
+	m := newTestModel()
+	m.stream.handler.Start(make(chan agentcore.StreamEvent), "Working...")
+	m.startLoading("Working...")
+	updated, _, handled := m.handleLLMStreamMsg(llmAutoCompactionCancelledMsg{
+		event: &agentcore.AutoCompactionEvent{
+			Usage: &agentcore.TokenUsage{InputTokens: 700, OutputTokens: 30, CacheReadTokens: 100},
+		},
+	})
+	if !handled {
+		t.Fatal("expected cancellation event to be handled")
+	}
+	if updated.turnUsage.usage.InputTokens != 700 || updated.turnUsage.usage.OutputTokens != 30 {
+		t.Fatalf("turn usage = %+v, want cancelled compaction tokens folded in", updated.turnUsage.usage)
 	}
 }

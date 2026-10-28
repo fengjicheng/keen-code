@@ -90,7 +90,7 @@ func RunHeadless(ctx context.Context, opts HeadlessRunOptions) (*HeadlessRunResu
 	permissionRequester := replpermissions.NewAutoApproveRequester()
 	diffEmitter := repltooling.NewDiffEmitter()
 	subagentUsage := make(chan usage.Record, 64)
-	defer drainUsageRecords(subagentUsage)
+	defer drainUsageRecords(subagentUsage, appendUsageRecord)
 	_ = agentCore.SetupTools(ctx, permissionRequester, diffEmitter, nil, opts.MCPRuntime, false, subagentUsage)
 
 	sessions := newReplSessionState(opts.WorkingDir)

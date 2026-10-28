@@ -187,11 +187,11 @@ func nextLoadingSpinner() spinner.Spinner {
 }
 
 func (m *replModel) startLoading(text string) {
-	m.loading.lastTurnElapsedMsg = ""
 	m.loading.showSpinner = true
 	m.loading.spinner.Spinner = nextLoadingSpinner()
 	m.loading.text = text
 	m.loading.startedAt = time.Now()
+	m.turnUsage = turnUsage{}
 }
 
 func cleanupCmd() tea.Cmd {
@@ -201,14 +201,9 @@ func cleanupCmd() tea.Cmd {
 }
 
 func (m *replModel) stopLoading() {
-	if !m.loading.startedAt.IsZero() {
-		elapsed := time.Since(m.loading.startedAt)
-		m.loading.lastTurnElapsedMsg = " ✔ " + pickTurnElapsedVerb() + " " + formatTurnElapsed(elapsed)
-	} else {
-		m.loading.lastTurnElapsedMsg = ""
-	}
 	m.loading.showSpinner = false
 	m.loading.startedAt = time.Time{}
+	m.turnUsage = turnUsage{}
 	m.refreshGitBranch()
 }
 
@@ -423,6 +418,24 @@ func formatTurnElapsed(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%ds", seconds)
 	}
+}
+
+func formatTurnUsageLine(elapsed time.Duration, tu turnUsage) string {
+	var parts []string
+	if elapsed > 0 {
+		parts = append(parts, pickTurnElapsedVerb()+" "+formatTurnElapsed(elapsed))
+	}
+	if tu.hasUsage {
+		parts = append(parts,
+			"in "+formatCompactTokens(tu.usage.InputTokens),
+			"out "+formatCompactTokens(tu.usage.OutputTokens),
+			"cache "+formatCompactTokens(tu.usage.CacheReadTokens),
+		)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "  ✔ " + strings.Join(parts, " · ")
 }
 
 func (m *replModel) currentMode() agentcore.Mode {
@@ -680,18 +693,11 @@ func (m *replModel) notificationHeight() int {
 	return statusBlockHeight
 }
 
-func (m *replModel) elapsedTimeHeight() int {
-	if !m.loading.showSpinner && m.notification.text == "" && m.loading.lastTurnElapsedMsg != "" {
-		return statusBlockHeight
-	}
-	return 0
-}
-
 func (m *replModel) adjustTextareaHeight() {
 	if m.height <= 0 {
 		return
 	}
-	m.viewport.SetHeight(m.height - m.textarea.Height() - viewportChromeHeight - m.spinnerHeight() - m.notificationHeight() - m.elapsedTimeHeight() - m.suggestion.Height() - m.queuedHeight())
+	m.viewport.SetHeight(m.height - m.textarea.Height() - viewportChromeHeight - m.spinnerHeight() - m.notificationHeight() - m.suggestion.Height() - m.queuedHeight())
 }
 
 func (m replModel) isAtTopOfInput() bool {
@@ -934,7 +940,7 @@ func (m *replModel) applyWindowSize(msg tea.WindowSizeMsg) {
 		m.output.SetWidth(msg.Width)
 	}
 	m.viewport.SetWidth(msg.Width)
-	m.viewport.SetHeight(msg.Height - m.textarea.Height() - viewportChromeHeight - m.spinnerHeight() - m.notificationHeight() - m.elapsedTimeHeight() - m.suggestion.Height() - m.queuedHeight())
+	m.viewport.SetHeight(msg.Height - m.textarea.Height() - viewportChromeHeight - m.spinnerHeight() - m.notificationHeight() - m.suggestion.Height() - m.queuedHeight())
 
 	if !m.initialScreenDone && msg.Width > 0 {
 		for _, line := range buildInitialScreen(m.ctx, m.lastSession, m.width) {

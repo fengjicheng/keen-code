@@ -60,6 +60,41 @@ func (m *replModel) recordCurrentUsage(tokenUsage *agentcore.TokenUsage) {
 	m.recordUsage(m.ctx.cfg.Provider, m.ctx.cfg.Model, tokenUsage)
 }
 
+func hasTurnUsage(tokenUsage *agentcore.TokenUsage) bool {
+	if tokenUsage == nil {
+		return false
+	}
+	return tokenUsage.InputTokens > 0 || tokenUsage.OutputTokens > 0 || tokenUsage.CacheReadTokens > 0
+}
+
+func (m *replModel) addTurnUsage(usage *agentcore.TokenUsage) {
+	if usage == nil {
+		return
+	}
+	m.turnUsage.usage.InputTokens += usage.InputTokens
+	m.turnUsage.usage.OutputTokens += usage.OutputTokens
+	m.turnUsage.usage.CacheReadTokens += usage.CacheReadTokens
+	if hasTurnUsage(usage) {
+		m.turnUsage.hasUsage = true
+	}
+}
+
+func (m *replModel) addAutoCompactionUsage(event *agentcore.AutoCompactionEvent) {
+	if event == nil {
+		return
+	}
+	m.addTurnUsage(event.Usage)
+}
+
+func (m *replModel) recordSubagentUsage(record usage.Record) {
+	appendUsageRecord(record)
+	m.addTurnUsage(&agentcore.TokenUsage{
+		InputTokens:     record.Input,
+		OutputTokens:    record.Output,
+		CacheReadTokens: record.CacheRead,
+	})
+}
+
 func (m *replModel) startUsageView() {
 	store, err := usage.DefaultStore()
 	if err != nil {
@@ -110,14 +145,14 @@ func (m *replModel) handleUsageViewKeyMsg(msg tea.KeyPressMsg) (replModel, tea.C
 }
 
 func (m *replModel) drainSubagentUsage() {
-	drainUsageRecords(m.subagentUsage)
+	drainUsageRecords(m.subagentUsage, m.recordSubagentUsage)
 }
 
-func drainUsageRecords(records <-chan usage.Record) {
+func drainUsageRecords(records <-chan usage.Record, consume func(usage.Record)) {
 	for records != nil {
 		select {
 		case record := <-records:
-			appendUsageRecord(record)
+			consume(record)
 		default:
 			return
 		}

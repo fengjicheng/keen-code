@@ -39,6 +39,10 @@ var (
 		Light: lipgloss.Color("#5e5d5d"),
 		Dark:  lipgloss.Color("#B3B3B3"),
 	}
+	TextFaintColor = compat.AdaptiveColor{
+		Light: lipgloss.Color("#6f6f6f"),
+		Dark:  lipgloss.Color("#6f6f6f"),
+	}
 	LoadingShimmerColor = compat.AdaptiveColor{
 		Light: lipgloss.Color("#212121"),
 		Dark:  lipgloss.Color("#FFFFFF"),
@@ -99,6 +103,7 @@ var (
 	HighlightStyle   = lipgloss.NewStyle().Foreground(SecondaryColor)
 	MutedStyle       = lipgloss.NewStyle().Foreground(MutedColor)
 	FaintedStyle     = lipgloss.NewStyle().Foreground(TextDimColor).Faint(true)
+	TurnMetaStyle    = lipgloss.NewStyle().Foreground(TextFaintColor)
 	PrimaryBoldStyle = lipgloss.NewStyle().Foreground(PrimaryColor).Bold(true)
 	AccentStyle      = lipgloss.NewStyle().Foreground(AccentColor)
 
@@ -158,7 +163,6 @@ var (
 	LoadingTextShimmerStyle     = lipgloss.NewStyle().Foreground(LoadingShimmerColor).Bold(true)
 	LoadingTextShimmerMid       = lipgloss.NewStyle().Foreground(LoadingShimmerMidColor)
 	LoadingTimerStyle           = lipgloss.NewStyle().Foreground(TextDimColor).Faint(true)
-	TurnElapsedStyle            = lipgloss.NewStyle().Foreground(TextDimColor).Faint(true)
 	CompactionSuccessStyle      = lipgloss.NewStyle().Foreground(SecondaryColor)
 	CompactionErrorStyle        = lipgloss.NewStyle().Foreground(ErrorColor)
 	CompactionCancelledStyle    = lipgloss.NewStyle().Foreground(TextDimColor)

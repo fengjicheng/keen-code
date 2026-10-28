@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mochow13/keen-code/internal/agentcore"
 
@@ -42,6 +43,7 @@ func (m *replModel) handleLLMUsage(usage *agentcore.TokenUsage) (replModel, tea.
 		m.contextStatus.AddUsage(usage)
 		m.refreshContextStatus()
 	}
+	m.addTurnUsage(usage)
 	return *m, m.waitForAsyncEvent()
 }
 
@@ -75,6 +77,11 @@ func (m *replModel) handleLLMDone() (replModel, tea.Cmd) {
 	}
 	segments := m.stream.handler.Snapshot()
 	m.recordHistoricalToolActivity(segments)
+	var elapsed time.Duration
+	if !m.loading.startedAt.IsZero() {
+		elapsed = time.Since(m.loading.startedAt)
+	}
+	usageLine := formatTurnUsageLine(elapsed, m.turnUsage)
 	m.stopLoading()
 	m.clearStreamCancel()
 	m.adjustTextareaHeight()
@@ -93,6 +100,10 @@ func (m *replModel) handleLLMDone() (replModel, tea.Cmd) {
 	m.refreshContextStatus()
 	for _, line := range responseLines {
 		m.output.AddLine(line)
+	}
+	if usageLine != "" {
+		m.output.AddEmptyLine()
+		m.output.AddStyledLine(usageLine, repltheme.TurnMetaStyle)
 	}
 	m.output.AddEmptyLine()
 	m.updateViewportContent()
@@ -210,6 +221,7 @@ func (m *replModel) handleAutoCompactionApplied(event *agentcore.AutoCompactionE
 	if event != nil {
 		m.recordCurrentUsage(event.Usage)
 	}
+	m.addAutoCompactionUsage(event)
 	if event == nil || len(event.Replacement) == 0 {
 		return m.handleAutoCompactionStopped()
 	}
@@ -1036,7 +1048,12 @@ func (m replModel) handleLLMStreamMsg(msg tea.Msg) (replModel, tea.Cmd, bool) {
 	case llmAutoCompactionAppliedMsg:
 		updated, cmd := m.handleAutoCompactionApplied(msg.event)
 		return updated, cmd, true
-	case llmAutoCompactionCancelledMsg, llmAutoCompactionFailedMsg:
+	case llmAutoCompactionCancelledMsg:
+		m.addAutoCompactionUsage(msg.event)
+		updated, cmd := m.handleAutoCompactionStopped()
+		return updated, cmd, true
+	case llmAutoCompactionFailedMsg:
+		m.addAutoCompactionUsage(msg.event)
 		updated, cmd := m.handleAutoCompactionStopped()
 		return updated, cmd, true
 	case llmChunkMsg:

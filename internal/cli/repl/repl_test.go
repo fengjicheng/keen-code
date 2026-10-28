@@ -1051,12 +1051,6 @@ func TestViewQuittingAndStatusVariants(t *testing.T) {
 	}
 
 	m = newTestModel()
-	m.loading.lastTurnElapsedMsg = "Completed in 3s"
-	if got := ansi.Strip(m.View().Content); !strings.Contains(got, "Completed in 3s") {
-		t.Fatalf("elapsed view = %q", got)
-	}
-
-	m = newTestModel()
 	m.loading.showSpinner = true
 	m.loading.text = "Working"
 	m.notification.text = "Queued"

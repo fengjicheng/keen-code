@@ -1202,7 +1202,6 @@ func (m *replModel) handleClearCommand() replModel {
 		m.permissionRequester.SetYoloMode(currentMode == agentcore.ModeYolo)
 	}
 	m.history.Reset()
-	m.loading.lastTurnElapsedMsg = ""
 	m.adjustTextareaHeight()
 
 	newOutput := reploutput.NewOutputBuilder(m.width, m.ctx.workingDir)
